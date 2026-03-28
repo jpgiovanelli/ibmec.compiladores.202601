@@ -1,0 +1,13 @@
+// HomeScript - Sensor de Luz
+// Controle automático de iluminação baseado em luminosidade
+
+device lampada pin 9;
+sensor luminosidade pin A1;
+
+if luminosidade < 200 {
+    turn lampada on;
+}
+
+if luminosidade > 600 {
+    turn lampada off;
+}

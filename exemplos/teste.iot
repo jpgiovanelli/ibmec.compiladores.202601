@@ -1,0 +1,11 @@
+// HomeScript - Exemplo de Teste
+// Automação de iluminação com sensor de movimento
+
+device luz pin 13;
+sensor movimento pin 2;
+
+when movimento == detected {
+    turn luz on;
+    wait 5000;
+    turn luz off;
+}

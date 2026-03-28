@@ -1,0 +1,36 @@
+// HomeScript - Automação Completa
+// Exemplo avançado com múltiplos dispositivos e sensores
+
+device luz_sala pin 13;
+device luz_cozinha pin 12;
+device ventilador pin 7;
+device alarme pin 6;
+
+sensor movimento pin 2;
+sensor temperatura pin A0;
+sensor porta pin 3;
+
+// Iluminação automática na sala
+when movimento == detected {
+    turn luz_sala on;
+    turn luz_cozinha on;
+    wait 10000;
+    turn luz_sala off;
+    turn luz_cozinha off;
+}
+
+// Controle de temperatura
+if temperatura > 28 {
+    turn ventilador on;
+}
+
+if temperatura < 22 {
+    turn ventilador off;
+}
+
+// Alarme quando porta aberta sem movimento
+when porta == detected {
+    turn alarme on;
+    wait 3000;
+    turn alarme off;
+}
