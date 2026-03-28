@@ -5,11 +5,13 @@ Executa o compilador como subprocesso e captura a saída JSON.
 
 import subprocess
 import json
+import sys
 import os
 import tempfile
 
 # Caminho do executável do compilador
-COMPILER_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "homescript.exe")
+exe_name = "homescript.exe" if sys.platform == "win32" else "homescript"
+COMPILER_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), exe_name)
 
 
 def compilar(codigo_homescript: str) -> dict:

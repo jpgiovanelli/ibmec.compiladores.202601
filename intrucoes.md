@@ -1,4 +1,3 @@
-Perfeito — vou te dar isso do jeito mais prático possível:
 **instruções diretas para uma IA executar + roadmap depois.**
 
 ---
