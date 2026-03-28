@@ -198,8 +198,8 @@ static void fase_tokens(const char *arquivo, int json) {
     lexer_destruir(lexer);
 }
 
-/* Fase 2: Análise Sintática (AST) — retorna parser também para acessar erros */
-static ASTNode* fase_parser_ext(const char *arquivo, Parser **parser_out) {
+/* Fase 2: Análise Sintática (AST) */
+static ASTNode* fase_parser(const char *arquivo) {
     Lexer *lexer = lexer_criar(arquivo);
     if (!lexer) return NULL;
 
@@ -212,24 +212,13 @@ static ASTNode* fase_parser_ext(const char *arquivo, Parser **parser_out) {
     ASTNode *ast = parser_analisar(parser);
 
     if (parser_tem_erro(parser)) {
-        fprintf(stderr, "\nCompilação encontrou %d erro(s).\n", parser_num_erros(parser));
+        fprintf(stderr, "\nCompilacao interrompida devido a erros.\n");
     }
 
-    /* Se o chamador quer o parser, não destruimos */
-    if (parser_out) {
-        *parser_out = parser;
-        /* NOTA: o lexer já foi consumido, mas não podemos destruir aqui */
-    } else {
-        parser_destruir(parser);
-    }
+    parser_destruir(parser);
     lexer_destruir(lexer);
 
     return ast;
-}
-
-/* Compat: fase_parser sem parser_out */
-static ASTNode* fase_parser(const char *arquivo) {
-    return fase_parser_ext(arquivo, NULL);
 }
 
 /* Fase 3: Geração de Código */
@@ -256,8 +245,6 @@ int main(int argc, char *argv[]) {
 
     if (opts.formato_json) {
         /* Saída JSON completa */
-        Parser *parser = NULL;
-
         printf("{\n");
 
         /* Tokens */
@@ -265,57 +252,23 @@ int main(int argc, char *argv[]) {
         printf(",\n");
 
         /* AST */
-        ast = fase_parser_ext(opts.arquivo_entrada, &parser);
+        ast = fase_parser(opts.arquivo_entrada);
+        if (ast) {
+            printf("  \"ast\": ");
+            ast_json(ast, 1);
+            printf(",\n");
 
-        int tem_erros = parser && parser_tem_erro(parser);
-
-        if (tem_erros) {
-            /* Incluir sucesso = false e array de erros */
-            printf("  \"sucesso\": false,\n");
-            printf("  \"erros\": [\n");
-            int i;
-            for (i = 0; i < parser_num_erros(parser); i++) {
-                const ErroCompilacao *e = parser_obter_erro(parser, i);
-                if (i > 0) printf(",\n");
-                char msg_escaped[512];
-                json_escape(e->mensagem, msg_escaped, sizeof(msg_escaped));
-                char found_escaped[128];
-                json_escape(e->encontrado, found_escaped, sizeof(found_escaped));
-                printf("    {\"linha\": %d, \"coluna\": %d, \"mensagem\": \"%s\", \"encontrado\": \"%s\"}",
-                       e->linha, e->coluna, msg_escaped, found_escaped);
+            /* Código C */
+            codigo_c = fase_codegen(ast);
+            if (codigo_c) {
+                char escaped[MAX_CODE_LEN * 2];
+                json_escape(codigo_c, escaped, sizeof(escaped));
+                printf("  \"codigo_c\": \"%s\"\n", escaped);
+                free(codigo_c);
             }
-            printf("\n  ],\n");
 
-            /* AST parcial (pode ter nós válidos antes do erro) */
-            if (ast) {
-                printf("  \"ast\": ");
-                ast_json(ast, 1);
-                printf(",\n");
-            }
-            printf("  \"codigo_c\": \"\"\n");
-        } else {
-            /* Sem erros — saída normal */
-            printf("  \"sucesso\": true,\n");
-            printf("  \"erros\": [],\n");
-
-            if (ast) {
-                printf("  \"ast\": ");
-                ast_json(ast, 1);
-                printf(",\n");
-
-                /* Código C */
-                codigo_c = fase_codegen(ast);
-                if (codigo_c) {
-                    char escaped[MAX_CODE_LEN * 2];
-                    json_escape(codigo_c, escaped, sizeof(escaped));
-                    printf("  \"codigo_c\": \"%s\"\n", escaped);
-                    free(codigo_c);
-                }
-            }
+            ast_destruir(ast);
         }
-
-        if (ast) ast_destruir(ast);
-        if (parser) parser_destruir(parser);
 
         printf("}\n");
         return 0;

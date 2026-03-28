@@ -35,55 +35,11 @@ static void parser_avancar(Parser *parser) {
 /* Registra um erro */
 static void parser_registrar_erro(Parser *parser, const char *mensagem) {
     parser->erro = 1;
-
-    /* Mensagem legada (primeiro erro) */
-    if (parser->num_erros == 0) {
-        snprintf(parser->mensagem_erro, sizeof(parser->mensagem_erro),
-                 "Erro na linha %d, coluna %d: %s (encontrado: '%s')",
-                 parser->token_atual.linha, parser->token_atual.coluna,
-                 mensagem, parser->token_atual.valor);
-    }
-
-    /* Adicionar ao array de erros */
-    if (parser->num_erros < MAX_ERROS) {
-        ErroCompilacao *e = &parser->erros[parser->num_erros];
-        e->linha = parser->token_atual.linha;
-        e->coluna = parser->token_atual.coluna;
-        snprintf(e->mensagem, sizeof(e->mensagem), "%s", mensagem);
-        snprintf(e->encontrado, sizeof(e->encontrado), "%s", parser->token_atual.valor);
-        parser->num_erros++;
-    }
-
-    fprintf(stderr, "Erro na linha %d, coluna %d: %s (encontrado: '%s')\n",
-            parser->token_atual.linha, parser->token_atual.coluna,
-            mensagem, parser->token_atual.valor);
-}
-
-/* Sincroniza o parser após um erro — avança até encontrar um ponto seguro */
-static void parser_sincronizar(Parser *parser) {
-    while (parser->token_atual.tipo != TOKEN_EOF) {
-        /* Se acabamos de consumir um ';', estamos num ponto seguro */
-        if (parser->token_atual.tipo == TOKEN_SEMICOLON) {
-            parser_avancar(parser);
-            return;
-        }
-        /* Se encontramos '}', não consumimos — o bloco vai tratar */
-        if (parser->token_atual.tipo == TOKEN_RBRACE) {
-            return;
-        }
-        /* Se encontramos o início de um novo statement, paramos */
-        if (parser->token_atual.tipo == TOKEN_DEVICE ||
-            parser->token_atual.tipo == TOKEN_SENSOR ||
-            parser->token_atual.tipo == TOKEN_TURN ||
-            parser->token_atual.tipo == TOKEN_LIGAR ||
-            parser->token_atual.tipo == TOKEN_DESLIGAR ||
-            parser->token_atual.tipo == TOKEN_WAIT ||
-            parser->token_atual.tipo == TOKEN_IF ||
-            parser->token_atual.tipo == TOKEN_WHEN) {
-            return;
-        }
-        parser_avancar(parser);
-    }
+    snprintf(parser->mensagem_erro, sizeof(parser->mensagem_erro),
+             "Erro na linha %d, coluna %d: %s (encontrado: '%s')",
+             parser->token_atual.linha, parser->token_atual.coluna,
+             mensagem, parser->token_atual.valor);
+    fprintf(stderr, "%s\n", parser->mensagem_erro);
 }
 
 /* Verifica se o token atual é do tipo esperado */
@@ -420,11 +376,11 @@ static ASTNode* parser_statement(Parser *parser) {
             return parser_when_stmt(parser);
         case TOKEN_ERROR:
             parser_registrar_erro(parser, "Token inválido encontrado");
-            parser_sincronizar(parser);
+            parser_avancar(parser);
             return NULL;
         default:
             parser_registrar_erro(parser, "Comando não reconhecido");
-            parser_sincronizar(parser);
+            parser_avancar(parser); /* evita loop infinito */
             return NULL;
     }
 }
@@ -441,7 +397,6 @@ Parser* parser_criar(Lexer *lexer) {
     parser->lexer = lexer;
     parser->erro = 0;
     parser->mensagem_erro[0] = '\0';
-    parser->num_erros = 0;
 
     /* Lê o primeiro token */
     parser_avancar(parser);
@@ -458,10 +413,7 @@ void parser_destruir(Parser *parser) {
 ASTNode* parser_analisar(Parser *parser) {
     ASTNode *programa = ast_criar_no(NODE_PROGRAM);
 
-    while (!parser_verificar(parser, TOKEN_EOF)) {
-        /* Se temos muitos erros, para de tentar */
-        if (parser->num_erros >= MAX_ERROS) break;
-
+    while (!parser_verificar(parser, TOKEN_EOF) && !parser->erro) {
         ASTNode *stmt = parser_statement(parser);
         if (stmt) {
             ast_adicionar_filho(programa, stmt);
@@ -472,18 +424,9 @@ ASTNode* parser_analisar(Parser *parser) {
 }
 
 int parser_tem_erro(Parser *parser) {
-    return parser->num_erros > 0;
+    return parser->erro;
 }
 
 const char* parser_erro_mensagem(Parser *parser) {
     return parser->mensagem_erro;
-}
-
-int parser_num_erros(Parser *parser) {
-    return parser->num_erros;
-}
-
-const ErroCompilacao* parser_obter_erro(Parser *parser, int indice) {
-    if (indice < 0 || indice >= parser->num_erros) return NULL;
-    return &parser->erros[indice];
 }

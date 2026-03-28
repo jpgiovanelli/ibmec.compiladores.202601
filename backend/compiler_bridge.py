@@ -43,17 +43,12 @@ def compilar(codigo_homescript: str) -> dict:
         # Parse da saída JSON
         try:
             dados = json.loads(resultado.stdout)
-            # O compilador agora inclui 'sucesso' e 'erros' no JSON
-            if "sucesso" not in dados:
-                dados["sucesso"] = True  # compatibilidade
-            if "erros" not in dados:
-                dados["erros"] = []
+            dados["sucesso"] = True
             return dados
         except json.JSONDecodeError:
             return {
                 "sucesso": False,
                 "erro": f"Erro ao interpretar saída do compilador: {resultado.stdout[:200]}",
-                "erros": [],
                 "tokens": [],
                 "ast": None,
                 "codigo_c": ""
