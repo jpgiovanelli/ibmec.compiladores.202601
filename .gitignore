@@ -1,0 +1,76 @@
+# =========================
+# Sistema Operacional
+# =========================
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# =========================
+# Editores / IDEs
+# =========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =========================
+# Compilador C
+# =========================
+# Binários gerados
+homescript
+homescript.exe
+*.o
+*.out
+*.exe
+# Arquivos de debug/build
+*.dSYM/
+build/
+bin/
+
+# =========================
+# Backend (Python)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+# Ambientes virtuais
+venv/
+env/
+.env/
+.venv/
+# Variáveis de ambiente
+.env
+.env.local
+# Arquivos de banco de dados locais (se usar SQLite futuramente)
+*.sqlite3
+# Logs
+*.log
+
+# =========================
+# Frontend (Node.js / React / Vite)
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/build/
+# Variáveis de ambiente
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+# Logs npm/yarn/pnpm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Docker
+# =========================
+.docker/
+docker-compose.override.yml
