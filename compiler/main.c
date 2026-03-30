@@ -157,6 +157,9 @@ static void ast_json(ASTNode *no, int nivel) {
     if (no->tipo == NODE_WAIT_CMD) {
         printf(",\n%s    \"tempo\": %d", indent, no->tempo_espera);
     }
+    if (no->tipo == NODE_VAR_DECL || no->tipo == NODE_ASSIGN_CMD || no->tipo == NODE_PRINT_CMD) {
+        printf(",\n%s    \"expressao\": \"%s\"", indent, no->expressao);
+    }
 
     if (no->num_filhos > 0) {
         printf(",\n%s    \"filhos\": [\n", indent);
