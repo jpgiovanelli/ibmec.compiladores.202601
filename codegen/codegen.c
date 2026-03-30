@@ -54,6 +54,17 @@ static int eh_pino_analogico(const char *pino) {
     return pino[0] == 'A' && pino[1] >= '0' && pino[1] <= '9';
 }
 
+/* Verifica se um nome pertence a sensor declarado */
+static int nome_eh_sensor(CodeGenerator *gen, const char *nome) {
+    int i;
+    for (i = 0; i < gen->num_sensores; i++) {
+        if (strcmp(gen->sensores[i], nome) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* ---------- Geração por Tipo de Nó ---------- */
 
 /* Coleta declarações de device e sensor */
@@ -77,12 +88,20 @@ static void codegen_declaracoes(CodeGenerator *gen, ASTNode *programa) {
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
         if (no->tipo == NODE_SENSOR_DECL) {
+            if (gen->num_sensores < 64) {
+                strncpy(gen->sensores[gen->num_sensores], no->nome, MAX_NAME_LEN - 1);
+                gen->sensores[gen->num_sensores][MAX_NAME_LEN - 1] = '\0';
+                gen->num_sensores++;
+            }
             if (eh_pino_analogico(no->pino)) {
                 codegen_escrever_fmt(gen, "int %s_pin = %s;\n", no->nome, no->pino);
             } else {
                 codegen_escrever_fmt(gen, "int %s_pin = %s;\n", no->nome, no->pino);
             }
             tem_sensor = 1;
+        }
+        if (no->tipo == NODE_VAR_DECL) {
+            codegen_escrever_fmt(gen, "int %s = %s;\n", no->nome, no->expressao);
         }
     }
 
@@ -128,6 +147,21 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
     if (!no) return;
 
     switch (no->tipo) {
+        case NODE_VAR_DECL:
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "int %s = %s;\n", no->nome, no->expressao);
+            break;
+
+        case NODE_ASSIGN_CMD:
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "%s = %s;\n", no->nome, no->expressao);
+            break;
+
+        case NODE_PRINT_CMD:
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "Serial.println(%s);\n", no->expressao);
+            break;
+
         case NODE_TURN_CMD:
             codegen_indentar(gen);
             codegen_escrever_fmt(gen, "digitalWrite(%s, %s);\n",
@@ -156,8 +190,13 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
                        strcmp(cond->valor_comparacao, "nao_detectado") == 0) {
                 codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == LOW) {\n",
                                     cond->nome);
-            } else {
+            } else if (nome_eh_sensor(gen, cond->nome)) {
                 codegen_escrever_fmt(gen, "if (analogRead(%s_pin) %s %s) {\n",
+                                    cond->nome,
+                                    ast_operador_simbolo(cond->operador),
+                                    cond->valor_comparacao);
+            } else {
+                codegen_escrever_fmt(gen, "if (%s %s %s) {\n",
                                     cond->nome,
                                     ast_operador_simbolo(cond->operador),
                                     cond->valor_comparacao);
@@ -194,7 +233,9 @@ static void codegen_loop(CodeGenerator *gen, ASTNode *programa) {
 
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
-        if (no->tipo != NODE_DEVICE_DECL && no->tipo != NODE_SENSOR_DECL) {
+        if (no->tipo != NODE_DEVICE_DECL &&
+            no->tipo != NODE_SENSOR_DECL &&
+            no->tipo != NODE_VAR_DECL) {
             codegen_comando(gen, no);
         }
     }
@@ -215,6 +256,7 @@ CodeGenerator* codegen_criar(void) {
     gen->codigo[0] = '\0';
     gen->posicao = 0;
     gen->nivel_indentacao = 0;
+    gen->num_sensores = 0;
 
     return gen;
 }

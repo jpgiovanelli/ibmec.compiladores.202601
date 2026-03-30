@@ -91,6 +91,8 @@ static TokenType verificar_palavra_reservada(const char *palavra) {
     if (strcmp(palavra, "device") == 0)        return TOKEN_DEVICE;
     if (strcmp(palavra, "sensor") == 0)        return TOKEN_SENSOR;
     if (strcmp(palavra, "pin") == 0)           return TOKEN_PIN;
+    if (strcmp(palavra, "let") == 0)           return TOKEN_LET;
+    if (strcmp(palavra, "print") == 0)         return TOKEN_PRINT;
     if (strcmp(palavra, "turn") == 0)          return TOKEN_TURN;
     if (strcmp(palavra, "on") == 0)            return TOKEN_ON;
     if (strcmp(palavra, "off") == 0)           return TOKEN_OFF;
@@ -195,9 +197,8 @@ static Token lexer_ler_operador(Lexer *lexer) {
                 lexer_avancar(lexer);
                 return criar_token(TOKEN_OP_EQUAL, "==", linha_inicio, coluna_inicio);
             }
-            /* '=' sozinho é erro nesta linguagem */
             lexer_avancar(lexer);
-            return criar_token(TOKEN_ERROR, "=", linha_inicio, coluna_inicio);
+            return criar_token(TOKEN_OP_ASSIGN, "=", linha_inicio, coluna_inicio);
 
         case '!':
             proximo = lexer_espiar(lexer);
@@ -294,9 +295,27 @@ Token lexer_proximo_token(Lexer *lexer) {
         return lexer_ler_numero(lexer);
     }
 
-    /* Operadores */
+    /* Operadores relacionais e de atribuição */
     if (c == '=' || c == '!' || c == '>' || c == '<') {
         return lexer_ler_operador(lexer);
+    }
+
+    /* Operadores aritméticos */
+    if (c == '+') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_OP_PLUS, "+", lexer->linha, lexer->coluna);
+    }
+    if (c == '-') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_OP_MINUS, "-", lexer->linha, lexer->coluna);
+    }
+    if (c == '*') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_OP_MULT, "*", lexer->linha, lexer->coluna);
+    }
+    if (c == '/') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_OP_DIV, "/", lexer->linha, lexer->coluna);
     }
 
     /* Delimitadores */
@@ -312,6 +331,14 @@ Token lexer_proximo_token(Lexer *lexer) {
         lexer_avancar(lexer);
         return criar_token(TOKEN_SEMICOLON, ";", lexer->linha, lexer->coluna);
     }
+    if (c == '(') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_LPAREN, "(", lexer->linha, lexer->coluna);
+    }
+    if (c == ')') {
+        lexer_avancar(lexer);
+        return criar_token(TOKEN_RPAREN, ")", lexer->linha, lexer->coluna);
+    }
 
     /* Token inválido */
     char erro[2] = {c, '\0'};
@@ -326,6 +353,8 @@ const char* token_tipo_nome(TokenType tipo) {
         case TOKEN_DEVICE:          return "KEYWORD_DEVICE";
         case TOKEN_SENSOR:          return "KEYWORD_SENSOR";
         case TOKEN_PIN:             return "KEYWORD_PIN";
+        case TOKEN_LET:             return "KEYWORD_LET";
+        case TOKEN_PRINT:           return "KEYWORD_PRINT";
         case TOKEN_TURN:            return "KEYWORD_TURN";
         case TOKEN_ON:              return "KEYWORD_ON";
         case TOKEN_OFF:             return "KEYWORD_OFF";
@@ -340,14 +369,21 @@ const char* token_tipo_nome(TokenType tipo) {
         case TOKEN_NUMBER:          return "NUMBER";
         case TOKEN_ANALOG_PIN:      return "ANALOG_PIN";
         case TOKEN_OP_EQUAL:        return "OP_EQUAL";
+        case TOKEN_OP_ASSIGN:       return "OP_ASSIGN";
         case TOKEN_OP_NOT_EQUAL:    return "OP_NOT_EQUAL";
         case TOKEN_OP_GREATER:      return "OP_GREATER";
         case TOKEN_OP_LESS:         return "OP_LESS";
         case TOKEN_OP_GREATER_EQUAL:return "OP_GREATER_EQUAL";
         case TOKEN_OP_LESS_EQUAL:   return "OP_LESS_EQUAL";
+        case TOKEN_OP_PLUS:         return "OP_PLUS";
+        case TOKEN_OP_MINUS:        return "OP_MINUS";
+        case TOKEN_OP_MULT:         return "OP_MULT";
+        case TOKEN_OP_DIV:          return "OP_DIV";
         case TOKEN_LBRACE:          return "DELIM_LBRACE";
         case TOKEN_RBRACE:          return "DELIM_RBRACE";
         case TOKEN_SEMICOLON:       return "DELIM_SEMICOLON";
+        case TOKEN_LPAREN:          return "DELIM_LPAREN";
+        case TOKEN_RPAREN:          return "DELIM_RPAREN";
         case TOKEN_EOF:             return "EOF";
         case TOKEN_ERROR:           return "ERRO";
         default:                    return "DESCONHECIDO";

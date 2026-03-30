@@ -16,6 +16,8 @@ typedef enum {
     TOKEN_DEVICE,           /* device / dispositivo */
     TOKEN_SENSOR,           /* sensor */
     TOKEN_PIN,              /* pin / pino */
+    TOKEN_LET,              /* let */
+    TOKEN_PRINT,            /* print */
     TOKEN_TURN,             /* turn */
     TOKEN_ON,               /* on */
     TOKEN_OFF,              /* off */
@@ -36,16 +38,23 @@ typedef enum {
 
     /* Operadores */
     TOKEN_OP_EQUAL,         /* == */
+    TOKEN_OP_ASSIGN,        /* = */
     TOKEN_OP_NOT_EQUAL,     /* != */
     TOKEN_OP_GREATER,       /* > */
     TOKEN_OP_LESS,          /* < */
     TOKEN_OP_GREATER_EQUAL, /* >= */
     TOKEN_OP_LESS_EQUAL,    /* <= */
+    TOKEN_OP_PLUS,          /* + */
+    TOKEN_OP_MINUS,         /* - */
+    TOKEN_OP_MULT,          /* * */
+    TOKEN_OP_DIV,           /* / */
 
     /* Delimitadores */
     TOKEN_LBRACE,           /* { */
     TOKEN_RBRACE,           /* } */
     TOKEN_SEMICOLON,        /* ; */
+    TOKEN_LPAREN,           /* ( */
+    TOKEN_RPAREN,           /* ) */
 
     /* Especiais */
     TOKEN_EOF,              /* Fim do arquivo */
