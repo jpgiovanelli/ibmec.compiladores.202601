@@ -1,10 +1,11 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Editor from '@monaco-editor/react'
 import './index.css'
 
 /* ===== Exemplos de código HomeScript ===== */
 const EXEMPLOS = [
   {
-    nome: '💡 Luz com Sensor',
+    nome: 'Luz com Sensor',
     codigo: `// Automação de iluminação com sensor de movimento
 device luz pin 13;
 sensor movimento pin 2;
@@ -16,7 +17,7 @@ when movimento == detected {
 }`
   },
   {
-    nome: '🌡️ Ventilador com Temperatura',
+    nome: 'Ventilador com Temperatura',
     codigo: `// Controle de ventilador por temperatura
 device ventilador pin 7;
 sensor temperatura pin A0;
@@ -30,7 +31,7 @@ if temperatura < 25 {
 }`
   },
   {
-    nome: '🏠 Automação Completa',
+    nome: 'Automação Completa',
     codigo: `// Automação completa com múltiplos dispositivos
 device luz_sala pin 13;
 device luz_cozinha pin 12;
@@ -67,6 +68,125 @@ when porta == detected {
 
 /* ===== API helper ===== */
 const API_URL = 'http://localhost:8000'
+let homescriptConfigured = false
+
+function configurarHomeScript(monaco) {
+  if (homescriptConfigured) return
+  homescriptConfigured = true
+
+  monaco.languages.register({ id: 'homescript' })
+
+  monaco.languages.setMonarchTokensProvider('homescript', {
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, 'comment'],
+        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|when|detected|not_detected)\b/, 'keyword'],
+        [/\b(dispositivo|pino|ligar|desligar|esperar|se|quando|detectado|nao_detectado)\b/, 'keyword'],
+        [/\bA[0-9]+\b/, 'number'],
+        [/\b[0-9]+\b/, 'number'],
+        [/[{}()[\]]/, '@brackets'],
+        [/==|!=|>=|<=|>|<|=|\+|-|\*|\//, 'operator'],
+        [/[;,.]/, 'delimiter'],
+        [/[a-zA-Z_][a-zA-Z0-9_]*/, 'identifier']
+      ]
+    }
+  })
+
+  monaco.languages.setLanguageConfiguration('homescript', {
+    comments: { lineComment: '//' },
+    brackets: [['{', '}'], ['(', ')']],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '(', close: ')' }
+    ],
+    surroundingPairs: [
+      { open: '{', close: '}' },
+      { open: '(', close: ')' }
+    ]
+  })
+
+  monaco.editor.defineTheme('homescript-ide', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword', foreground: 'C586C0' },
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'number', foreground: 'B5CEA8' },
+      { token: 'operator', foreground: 'D4D4D4' },
+      { token: 'identifier', foreground: '9CDCFE' }
+    ],
+    colors: {
+      'editor.background': '#1e1e1e',
+      'editorLineNumber.foreground': '#6b7280',
+      'editorLineNumber.activeForeground': '#c9d1d9',
+      'editorGutter.background': '#1e1e1e',
+      'editorCursor.foreground': '#d4d4d4',
+      'editor.selectionBackground': '#264f78',
+      'editor.inactiveSelectionBackground': '#3a3d41',
+      'editorIndentGuide.background1': '#2a2d2e'
+    }
+  })
+
+  monaco.languages.registerCompletionItemProvider('homescript', {
+    triggerCharacters: [' ', '_'],
+    provideCompletionItems: (model, position) => {
+      const word = model.getWordUntilPosition(position)
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn
+      }
+
+      const snippet = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+      const k = monaco.languages.CompletionItemKind
+      const sugestoes = [
+        { label: 'device', insertText: 'device ${1:nome} pin ${2:13};', detail: 'Declarar dispositivo', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'dispositivo', insertText: 'dispositivo ${1:nome} pino ${2:13};', detail: 'Declarar dispositivo (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'sensor', insertText: 'sensor ${1:nome} pin ${2:A0};', detail: 'Declarar sensor', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'pin', insertText: 'pin', detail: 'Palavra-chave de pino (EN)', kind: k.Keyword },
+        { label: 'pino', insertText: 'pino', detail: 'Palavra-chave de pino (PT-BR)', kind: k.Keyword },
+        { label: 'let', insertText: 'let ${1:variavel} = ${2:0};', detail: 'Declarar variável', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'turn on', insertText: 'turn ${1:dispositivo} on;', detail: 'Ligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'turn off', insertText: 'turn ${1:dispositivo} off;', detail: 'Desligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'when', insertText: 'when ${1:sensor} == ${2:detected} {\n\t$0\n}', detail: 'Regra when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'if', insertText: 'if ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Condição if', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'wait', insertText: 'wait ${1:1000};', detail: 'Aguardar em ms', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'print', insertText: 'print ${1:valor};', detail: 'Impressão serial', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'detected', insertText: 'detected', detail: 'Estado detectado', kind: k.Constant },
+        { label: 'not_detected', insertText: 'not_detected', detail: 'Estado não detectado', kind: k.Constant },
+        { label: 'detectado', insertText: 'detectado', detail: 'Estado detectado (PT-BR)', kind: k.Constant },
+        { label: 'nao_detectado', insertText: 'nao_detectado', detail: 'Estado não detectado (PT-BR)', kind: k.Constant },
+        { label: 'ligar', insertText: 'ligar ${1:dispositivo};', detail: 'Atalho PT-BR para ligar', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'desligar', insertText: 'desligar ${1:dispositivo};', detail: 'Atalho PT-BR para desligar', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'esperar', insertText: 'esperar ${1:1000};', detail: 'Atalho PT-BR para wait', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'quando', insertText: 'quando ${1:sensor} == ${2:detectado} {\n\t$0\n}', detail: 'Atalho PT-BR para when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'se', insertText: 'se ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Atalho PT-BR para if', kind: k.Keyword, insertTextRules: snippet }
+      ].map((item) => ({ ...item, range }))
+
+      const simbolos = new Set()
+      const texto = model.getValue()
+      const regex = /\b(?:device|sensor|let)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b/g
+      let match = regex.exec(texto)
+      while (match) {
+        simbolos.add(match[1])
+        match = regex.exec(texto)
+      }
+
+      for (const simbolo of simbolos) {
+        sugestoes.push({
+          label: simbolo,
+          kind: k.Variable,
+          detail: 'Identificador declarado',
+          insertText: simbolo,
+          range
+        })
+      }
+
+      return { suggestions: sugestoes }
+    }
+  })
+}
 
 async function compilar(codigo) {
   const res = await fetch(`${API_URL}/compile`, {
@@ -299,6 +419,8 @@ function App() {
   const [erro, setErro] = useState(null)
   const [erroDetalhes, setErroDetalhes] = useState([])
   const [showExemplos, setShowExemplos] = useState(false)
+  const editorRef = useRef(null)
+  const compileActionRef = useRef(() => {})
 
   const handleCompile = useCallback(async () => {
     if (!codigo.trim()) return
@@ -318,7 +440,7 @@ function App() {
         setErroDetalhes(Array.isArray(res.erros) ? res.erros : [])
         setResultado(null)
       }
-    } catch (e) {
+    } catch {
       setErro('Erro ao conectar com o servidor. Verifique se o backend está rodando (python app.py)')
       setErroDetalhes([])
       setResultado(null)
@@ -326,6 +448,14 @@ function App() {
       setCompilando(false)
     }
   }, [codigo])
+
+  useEffect(() => {
+    compileActionRef.current = () => {
+      if (!compilando) {
+        handleCompile()
+      }
+    }
+  }, [compilando, handleCompile])
 
   const handleExemploClick = (exemplo) => {
     setCodigo(exemplo.codigo)
@@ -349,7 +479,7 @@ function App() {
       <header className="header">
         <div className="header-left">
           <div className="logo">
-            <div className="logo-icon">🏠</div>
+            <div className="logo-icon">HS</div>
             <span className="logo-text">HomeScript IDE</span>
           </div>
         </div>
@@ -357,11 +487,11 @@ function App() {
         <div className="header-center">
           <button className={`tab-btn ${modo === 'editor' ? 'active' : ''}`}
             onClick={() => setModo('editor')}>
-            ✏️ Editor
+            Editor
           </button>
           <button className={`tab-btn ${modo === 'visual' ? 'active' : ''}`}
             onClick={() => setModo('visual')}>
-            🧩 Visual
+            Visual Builder
           </button>
         </div>
 
@@ -372,7 +502,7 @@ function App() {
           </div>
           <div className="examples-dropdown">
             <button className="examples-btn" onClick={() => setShowExemplos(!showExemplos)}>
-              📂 Exemplos
+              Exemplos
             </button>
             {showExemplos && (
               <div className="examples-list">
@@ -387,20 +517,20 @@ function App() {
         </div>
       </header>
 
-      {modo === 'visual' ? (
+              {modo === 'visual' ? (
         <div style={{ flex: 1, overflow: 'auto' }}>
           <VisualBuilder onGenerate={handleVisualGenerate} />
         </div>
       ) : (
         <>
           {/* Barra de compilação */}
-          <div className="compile-bar">
+              <div className="compile-bar">
             <button
               className={`compile-btn ${compilando ? 'loading' : ''}`}
               onClick={handleCompile}
               disabled={compilando || !codigo.trim()}
             >
-              {compilando ? '⏳ Compilando...' : '▶ Compilar'}
+              {compilando ? 'Compilando...' : 'Compilar (Ctrl/Cmd + Enter)'}
             </button>
           </div>
 
@@ -409,15 +539,47 @@ function App() {
             {/* Editor */}
             <div className="editor-panel">
               <div className="panel-header">
-                <span className="panel-title">📝 código homescript (.iot)</span>
+                <span className="panel-title">homescript (.iot)</span>
               </div>
               <div className="editor-wrapper">
-                <textarea
-                  className="code-editor"
+                <Editor
+                  height="100%"
+                  language="homescript"
+                  theme="homescript-ide"
                   value={codigo}
-                  onChange={e => setCodigo(e.target.value)}
-                  placeholder="// Escreva seu código HomeScript aqui..."
-                  spellCheck={false}
+                  beforeMount={configurarHomeScript}
+                  onMount={(editor, monaco) => {
+                    editorRef.current = editor
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+                      compileActionRef.current()
+                    })
+                    editor.focus()
+                  }}
+                  onChange={(value) => setCodigo(value ?? '')}
+                  options={{
+                    automaticLayout: true,
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    fontSize: 14,
+                    fontLigatures: true,
+                    lineHeight: 22,
+                    lineNumbers: 'on',
+                    minimap: { enabled: false },
+                    glyphMargin: true,
+                    folding: true,
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    tabSize: 4,
+                    insertSpaces: true,
+                    detectIndentation: false,
+                    quickSuggestions: { other: true, comments: false, strings: false },
+                    suggestOnTriggerCharacters: true,
+                    snippetSuggestions: 'top',
+                    renderLineHighlight: 'all',
+                    scrollbar: {
+                      verticalScrollbarSize: 10,
+                      horizontalScrollbarSize: 10
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -427,15 +589,15 @@ function App() {
               <div className="result-tabs">
                 <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
                   onClick={() => setAbaResultado('codigo')}>
-                  ⚡ Código C
+                  Código C
                 </button>
                 <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
                   onClick={() => setAbaResultado('tokens')}>
-                  🔤 Tokens
+                  Tokens
                 </button>
                 <button className={`result-tab ${abaResultado === 'ast' ? 'active' : ''}`}
                   onClick={() => setAbaResultado('ast')}>
-                  🌳 AST
+                  AST
                 </button>
               </div>
 
