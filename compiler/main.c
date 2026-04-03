@@ -23,6 +23,7 @@
 #include "../parser/parser.h"
 #include "../parser/ast.h"
 #include "../codegen/codegen.h"
+#include "../semantic/semantic.h"
 
 /* ---------- Opções de Linha de Comando ---------- */
 typedef struct {
@@ -144,6 +145,8 @@ static void ast_json(ASTNode *no, int nivel) {
 
     printf("%s{\n", indent);
     printf("%s    \"tipo\": \"%s\"", indent, ast_tipo_nome(no->tipo));
+    printf(",\n%s    \"linha\": %d", indent, no->linha);
+    printf(",\n%s    \"coluna\": %d", indent, no->coluna);
 
     if (no->nome[0]) printf(",\n%s    \"nome\": \"%s\"", indent, no->nome);
     if (no->pino[0]) printf(",\n%s    \"pino\": \"%s\"", indent, no->pino);
@@ -202,7 +205,7 @@ static void fase_tokens(const char *arquivo, int json) {
 }
 
 /* Fase 2: Análise Sintática (AST) */
-static ASTNode* fase_parser(const char *arquivo) {
+static ASTNode* fase_parser(const char *arquivo, int *tem_erro, int *erro_linha, int *erro_coluna, char *mensagem_erro, size_t mensagem_len) {
     Lexer *lexer = lexer_criar(arquivo);
     if (!lexer) return NULL;
 
@@ -213,6 +216,13 @@ static ASTNode* fase_parser(const char *arquivo) {
     }
 
     ASTNode *ast = parser_analisar(parser);
+    if (tem_erro) *tem_erro = parser_tem_erro(parser);
+    if (erro_linha) *erro_linha = parser->erro_linha;
+    if (erro_coluna) *erro_coluna = parser->erro_coluna;
+    if (mensagem_erro && mensagem_len > 0) {
+        strncpy(mensagem_erro, parser_erro_mensagem(parser), mensagem_len - 1);
+        mensagem_erro[mensagem_len - 1] = '\0';
+    }
 
     if (parser_tem_erro(parser)) {
         fprintf(stderr, "\nCompilacao interrompida devido a erros.\n");
@@ -222,6 +232,32 @@ static ASTNode* fase_parser(const char *arquivo) {
     lexer_destruir(lexer);
 
     return ast;
+}
+
+static void imprimir_erros_json(int syntax_error, int syntax_line, int syntax_col, const char *syntax_msg, const SemanticResult *sem_result) {
+    int i;
+    int primeiro = 1;
+    char escaped[1024];
+
+    printf("  \"erros\": [\n");
+
+    if (syntax_error && syntax_msg && syntax_msg[0]) {
+        json_escape(syntax_msg, escaped, sizeof(escaped));
+        printf("    {\"fase\": \"sintatico\", \"mensagem\": \"%s\", \"linha\": %d, \"coluna\": %d}", escaped, syntax_line, syntax_col);
+        primeiro = 0;
+    }
+
+    if (sem_result) {
+        for (i = 0; i < sem_result->num_erros; i++) {
+            if (!primeiro) printf(",\n");
+            json_escape(sem_result->erros[i].mensagem, escaped, sizeof(escaped));
+            printf("    {\"fase\": \"semantico\", \"mensagem\": \"%s\", \"linha\": %d, \"coluna\": %d}",
+                   escaped, sem_result->erros[i].linha, sem_result->erros[i].coluna);
+            primeiro = 0;
+        }
+    }
+
+    printf("\n  ]");
 }
 
 /* Fase 3: Geração de Código */
@@ -245,6 +281,15 @@ int main(int argc, char *argv[]) {
     Opcoes opts = parse_args(argc, argv);
     ASTNode *ast;
     char *codigo_c;
+    int syntax_error = 0;
+    int syntax_line = 0;
+    int syntax_col = 0;
+    char syntax_msg[512] = "";
+    int sem_error = 0;
+    SemanticResult sem_result;
+    int sucesso = 1;
+    char erro_msg[1024] = "";
+    char erro_escaped[2048];
 
     if (opts.formato_json) {
         /* Saída JSON completa */
@@ -255,22 +300,57 @@ int main(int argc, char *argv[]) {
         printf(",\n");
 
         /* AST */
-        ast = fase_parser(opts.arquivo_entrada);
+        ast = fase_parser(opts.arquivo_entrada, &syntax_error, &syntax_line, &syntax_col, syntax_msg, sizeof(syntax_msg));
+        sucesso = !syntax_error;
+
+        if (ast && !syntax_error) {
+            semantic_analisar(ast, &sem_result);
+            sem_error = !sem_result.sucesso;
+            sucesso = sucesso && !sem_error;
+        } else {
+            memset(&sem_result, 0, sizeof(sem_result));
+            sem_result.sucesso = 1;
+        }
+
+        if (syntax_error && syntax_msg[0]) {
+            strncpy(erro_msg, syntax_msg, sizeof(erro_msg) - 1);
+            erro_msg[sizeof(erro_msg) - 1] = '\0';
+        } else if (sem_error && sem_result.num_erros > 0) {
+            strncpy(erro_msg, sem_result.erros[0].mensagem, sizeof(erro_msg) - 1);
+            erro_msg[sizeof(erro_msg) - 1] = '\0';
+        }
+
+        json_escape(erro_msg, erro_escaped, sizeof(erro_escaped));
+        printf("  \"sucesso\": %s,\n", sucesso ? "true" : "false");
+        printf("  \"erro\": \"%s\",\n", erro_escaped);
+        imprimir_erros_json(syntax_error, syntax_line, syntax_col, syntax_msg, &sem_result);
+        printf(",\n");
+
         if (ast) {
             printf("  \"ast\": ");
             ast_json(ast, 1);
             printf(",\n");
 
             /* Código C */
-            codigo_c = fase_codegen(ast);
-            if (codigo_c) {
+            if (sucesso) {
+                codigo_c = fase_codegen(ast);
+            } else {
+                codigo_c = NULL;
+            }
+
+            if (codigo_c && sucesso) {
                 char escaped[MAX_CODE_LEN * 2];
                 json_escape(codigo_c, escaped, sizeof(escaped));
                 printf("  \"codigo_c\": \"%s\"\n", escaped);
                 free(codigo_c);
+            } else {
+                printf("  \"codigo_c\": \"\"\n");
             }
 
             ast_destruir(ast);
+        } else {
+            printf("  \"ast\": null,\n");
+            printf("  \"codigo_c\": \"\"\n");
         }
 
         printf("}\n");
@@ -289,9 +369,27 @@ int main(int argc, char *argv[]) {
     }
 
     /* AST */
-    ast = fase_parser(opts.arquivo_entrada);
+    ast = fase_parser(opts.arquivo_entrada, &syntax_error, &syntax_line, &syntax_col, syntax_msg, sizeof(syntax_msg));
     if (!ast) {
         fprintf(stderr, "Erro: falha ao gerar AST.\n");
+        return 1;
+    }
+    if (syntax_error) {
+        ast_destruir(ast);
+        return 1;
+    }
+
+    semantic_analisar(ast, &sem_result);
+    if (!sem_result.sucesso) {
+        int i;
+        fprintf(stderr, "Erros semanticos encontrados:\n");
+        for (i = 0; i < sem_result.num_erros; i++) {
+            fprintf(stderr, "  - linha %d, coluna %d: %s\n",
+                    sem_result.erros[i].linha,
+                    sem_result.erros[i].coluna,
+                    sem_result.erros[i].mensagem);
+        }
+        ast_destruir(ast);
         return 1;
     }
 

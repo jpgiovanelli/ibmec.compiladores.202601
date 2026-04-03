@@ -50,6 +50,7 @@ class ResultadoCompilacao(BaseModel):
     ast: Optional[dict] = None
     codigo_c: Optional[str] = ""
     erro: Optional[str] = None
+    erros: Optional[list] = []
 
 # --- Endpoints ---
 

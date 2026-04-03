@@ -16,6 +16,8 @@ ASTNode* ast_criar_no(NodeType tipo) {
     }
 
     no->tipo = tipo;
+    no->linha = 0;
+    no->coluna = 0;
     no->nome[0] = '\0';
     no->pino[0] = '\0';
     no->operador = OP_EQ;

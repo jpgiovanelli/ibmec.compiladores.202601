@@ -35,13 +35,24 @@ static void parser_avancar(Parser *parser) {
     parser->token_atual = lexer_proximo_token(parser->lexer);
 }
 
+/* Marca posição (linha/coluna) no nó AST a partir do token atual */
+static void ast_marcar_posicao(ASTNode *no, Parser *parser) {
+    if (!no || !parser) return;
+    no->linha = parser->token_atual.linha;
+    no->coluna = parser->token_atual.coluna;
+}
+
 /* Registra um erro */
 static void parser_registrar_erro(Parser *parser, const char *mensagem) {
+    if (!parser->erro) {
+        parser->erro_linha = parser->token_atual.linha;
+        parser->erro_coluna = parser->token_atual.coluna;
+        snprintf(parser->mensagem_erro, sizeof(parser->mensagem_erro),
+                 "Erro na linha %d, coluna %d: %s (encontrado: '%s')",
+                 parser->token_atual.linha, parser->token_atual.coluna,
+                 mensagem, parser->token_atual.valor);
+    }
     parser->erro = 1;
-    snprintf(parser->mensagem_erro, sizeof(parser->mensagem_erro),
-             "Erro na linha %d, coluna %d: %s (encontrado: '%s')",
-             parser->token_atual.linha, parser->token_atual.coluna,
-             mensagem, parser->token_atual.valor);
     fprintf(stderr, "%s\n", parser->mensagem_erro);
 }
 
@@ -187,6 +198,7 @@ static int parser_expressao(Parser *parser, char *saida, int max_saida) {
 /* Declaração de dispositivo: device IDENTIFIER pin (NUMBER|ANALOG_PIN) ; */
 static ASTNode* parser_device_decl(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_DEVICE_DECL);
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'device' / 'dispositivo' */
 
@@ -226,6 +238,7 @@ static ASTNode* parser_device_decl(Parser *parser) {
 /* Declaração de sensor: sensor IDENTIFIER pin (NUMBER|ANALOG_PIN) ; */
 static ASTNode* parser_sensor_decl(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_SENSOR_DECL);
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'sensor' */
 
@@ -266,6 +279,7 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
 static ASTNode* parser_var_decl(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_VAR_DECL);
     char expr[MAX_EXPR_LEN];
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'let' */
 
@@ -300,6 +314,7 @@ static ASTNode* parser_var_decl(Parser *parser) {
 static ASTNode* parser_assign_cmd(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_ASSIGN_CMD);
     char expr[MAX_EXPR_LEN];
+    ast_marcar_posicao(no, parser);
 
     if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
         parser_registrar_erro(parser, "Nome da variável esperado na atribuição");
@@ -332,6 +347,7 @@ static ASTNode* parser_assign_cmd(Parser *parser) {
 static ASTNode* parser_print_cmd(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_PRINT_CMD);
     char expr[MAX_EXPR_LEN];
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'print' */
 
@@ -352,6 +368,7 @@ static ASTNode* parser_print_cmd(Parser *parser) {
 /* Comando turn: turn IDENTIFIER on|off ; */
 static ASTNode* parser_turn_cmd(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_TURN_CMD);
+    ast_marcar_posicao(no, parser);
 
     /* Verifica se é 'ligar' ou 'desligar' (atalhos em português) */
     if (parser_verificar(parser, TOKEN_LIGAR)) {
@@ -413,6 +430,7 @@ static ASTNode* parser_turn_cmd(Parser *parser) {
 /* Comando wait: wait NUMBER ; */
 static ASTNode* parser_wait_cmd(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_WAIT_CMD);
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'wait' / 'esperar' */
 
@@ -435,6 +453,7 @@ static ASTNode* parser_wait_cmd(Parser *parser) {
 /* Condição: IDENTIFIER OP (NUMBER | IDENTIFIER) */
 static ASTNode* parser_condicao(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_CONDITION);
+    ast_marcar_posicao(no, parser);
 
     if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
         parser_registrar_erro(parser, "Nome do sensor esperado na condição");
@@ -474,6 +493,7 @@ static ASTNode* parser_statement(Parser *parser);
 /* Bloco: { Statement* } */
 static ASTNode* parser_bloco(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_BLOCK);
+    ast_marcar_posicao(no, parser);
 
     if (!parser_consumir(parser, TOKEN_LBRACE, "'{' esperado para abrir bloco")) {
         ast_destruir(no);
@@ -500,6 +520,7 @@ static ASTNode* parser_bloco(Parser *parser) {
 /* if: if Condition Block */
 static ASTNode* parser_if_stmt(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_IF_STMT);
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'if' / 'se' */
 
@@ -523,6 +544,7 @@ static ASTNode* parser_if_stmt(Parser *parser) {
 /* when: when Condition Block */
 static ASTNode* parser_when_stmt(Parser *parser) {
     ASTNode *no = ast_criar_no(NODE_WHEN_STMT);
+    ast_marcar_posicao(no, parser);
 
     parser_avancar(parser); /* consome 'when' / 'quando' */
 
@@ -591,6 +613,8 @@ Parser* parser_criar(Lexer *lexer) {
 
     parser->lexer = lexer;
     parser->erro = 0;
+    parser->erro_linha = 0;
+    parser->erro_coluna = 0;
     parser->mensagem_erro[0] = '\0';
 
     /* Lê o primeiro token */
@@ -607,6 +631,10 @@ void parser_destruir(Parser *parser) {
 
 ASTNode* parser_analisar(Parser *parser) {
     ASTNode *programa = ast_criar_no(NODE_PROGRAM);
+    if (programa) {
+        programa->linha = 1;
+        programa->coluna = 1;
+    }
 
     while (!parser_verificar(parser, TOKEN_EOF) && !parser->erro) {
         ASTNode *stmt = parser_statement(parser);

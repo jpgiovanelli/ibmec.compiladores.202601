@@ -47,6 +47,8 @@ typedef enum {
 
 typedef struct ASTNode {
     NodeType tipo;
+    int linha;
+    int coluna;
 
     /* Dados específicos do nó */
     char nome[MAX_NAME_LEN];           /* nome do dispositivo/sensor */
