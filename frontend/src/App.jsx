@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import './index.css'
 
@@ -197,6 +197,290 @@ async function compilar(codigo) {
   return res.json()
 }
 
+function resumirNoAst(node) {
+  const partes = [node.tipo]
+  if (node.nome) partes.push(`nome=${node.nome}`)
+  if (node.pino) partes.push(`pino=${node.pino}`)
+  if (node.operador) partes.push(`op=${node.operador}`)
+  if (node.valor) partes.push(`valor=${node.valor}`)
+  if (node.estado) partes.push(`estado=${node.estado}`)
+  if (node.tempo !== undefined) partes.push(`tempo=${node.tempo}`)
+  if (node.expressao) partes.push(`expr=${node.expressao}`)
+  return partes.join(' | ')
+}
+
+function coletarNosAst(node, lista = []) {
+  if (!node) return lista
+  if (node.tipo !== 'PROGRAM') {
+    lista.push(node)
+  }
+  if (Array.isArray(node.filhos)) {
+    node.filhos.forEach((filho) => coletarNosAst(filho, lista))
+  }
+  return lista
+}
+
+const LEXER_SNIPPETS = {
+  fluxo: `Token lexer_proximo_token(Lexer *lexer) {
+  lexer_pular_insignificantes(lexer);
+  if (lexer->eof) return TOKEN_EOF;
+
+  char c = lexer->caractere_atual;
+  if (c == 'A' && isdigit(lexer_espiar(lexer))) return lexer_ler_pino_analogico(lexer);
+  if (isalpha(c) || c == '_') return lexer_ler_identificador(lexer);
+  if (isdigit(c)) return lexer_ler_numero(lexer);
+  if (c == '=' || c == '!' || c == '>' || c == '<') return lexer_ler_operador(lexer);
+  /* + - * / { } ; ( ) ... */
+}`,
+  identificador: `static Token lexer_ler_identificador(Lexer *lexer) {
+  while (!lexer->eof && (isalnum(lexer->caractere_atual) || lexer->caractere_atual == '_')) {
+    buffer[i++] = lexer->caractere_atual;
+    lexer_avancar(lexer);   // avanca caractere por caractere
+  }
+  TokenType tipo = verificar_palavra_reservada(buffer);
+  return criar_token(tipo, buffer, linha_inicio, coluna_inicio);
+}`,
+  numero: `static Token lexer_ler_numero(Lexer *lexer) {
+  while (!lexer->eof && isdigit(lexer->caractere_atual)) {
+    buffer[i++] = lexer->caractere_atual;
+    lexer_avancar(lexer);   // avanca 1 caractere
+  }
+  return criar_token(TOKEN_NUMBER, buffer, linha_inicio, coluna_inicio);
+}`,
+  pinoAnalogico: `static Token lexer_ler_pino_analogico(Lexer *lexer) {
+  buffer[i++] = lexer->caractere_atual; // 'A'
+  lexer_avancar(lexer);
+  while (!lexer->eof && isdigit(lexer->caractere_atual)) {
+    buffer[i++] = lexer->caractere_atual;
+    lexer_avancar(lexer);
+  }
+  return criar_token(TOKEN_ANALOG_PIN, buffer, linha_inicio, coluna_inicio);
+}`,
+  operadorRelacional: `static Token lexer_ler_operador(Lexer *lexer) {
+  switch (lexer->caractere_atual) {
+    case '=': if (lexer_espiar(lexer) == '=') return TOKEN_OP_EQUAL; else return TOKEN_OP_ASSIGN;
+    case '!': if (lexer_espiar(lexer) == '=') return TOKEN_OP_NOT_EQUAL; else return TOKEN_ERROR;
+    case '>': if (lexer_espiar(lexer) == '=') return TOKEN_OP_GREATER_EQUAL; else return TOKEN_OP_GREATER;
+    case '<': if (lexer_espiar(lexer) == '=') return TOKEN_OP_LESS_EQUAL; else return TOKEN_OP_LESS;
+  }
+}`,
+  delimitadorOuAritmetico: `if (c == '+') return TOKEN_OP_PLUS;
+if (c == '-') return TOKEN_OP_MINUS;
+if (c == '*') return TOKEN_OP_MULT;
+if (c == '/') return TOKEN_OP_DIV;
+if (c == '{') return TOKEN_LBRACE;
+if (c == '}') return TOKEN_RBRACE;
+if (c == ';') return TOKEN_SEMICOLON;
+if (c == '(') return TOKEN_LPAREN;
+if (c == ')') return TOKEN_RPAREN;`,
+  erro: `/* Token invalido */
+char erro[2] = {c, '\\0'};
+lexer_avancar(lexer);
+return criar_token(TOKEN_ERROR, erro, linha, coluna);`,
+  avancar: `static void lexer_avancar(Lexer *lexer) {
+  lexer->caractere_atual = fgetc(lexer->arquivo);
+  if (lexer->caractere_atual == '\\n') { lexer->linha++; lexer->coluna = 0; }
+  else { lexer->coluna++; }
+}`
+}
+
+function montarRastroCaracteres(token) {
+  if (!token || !token.valor || token.valor === 'EOF') return []
+  const inicio = typeof token.coluna === 'number' ? token.coluna : 1
+  return Array.from(token.valor).map((caractere, index) => ({
+    indice: index + 1,
+    caractere,
+    coluna: inicio + index
+  }))
+}
+
+function mapearDebugLexico(token) {
+  if (!token) {
+    return {
+      funcao: 'lexer_proximo_token',
+      snippet: LEXER_SNIPPETS.fluxo,
+      rastro: []
+    }
+  }
+
+  const tipo = token.tipo || ''
+  if (tipo === 'IDENTIFIER' || tipo.startsWith('KEYWORD_')) {
+    return {
+      funcao: 'lexer_proximo_token -> lexer_ler_identificador -> verificar_palavra_reservada',
+      snippet: `${LEXER_SNIPPETS.identificador}\n\n${LEXER_SNIPPETS.avancar}`,
+      rastro: montarRastroCaracteres(token)
+    }
+  }
+  if (tipo === 'NUMBER') {
+    return {
+      funcao: 'lexer_proximo_token -> lexer_ler_numero',
+      snippet: `${LEXER_SNIPPETS.numero}\n\n${LEXER_SNIPPETS.avancar}`,
+      rastro: montarRastroCaracteres(token)
+    }
+  }
+  if (tipo === 'ANALOG_PIN') {
+    return {
+      funcao: 'lexer_proximo_token -> lexer_ler_pino_analogico',
+      snippet: `${LEXER_SNIPPETS.pinoAnalogico}\n\n${LEXER_SNIPPETS.avancar}`,
+      rastro: montarRastroCaracteres(token)
+    }
+  }
+  if (tipo.startsWith('OP_EQUAL') || tipo.startsWith('OP_ASSIGN') || tipo.startsWith('OP_NOT') || tipo.startsWith('OP_GREATER') || tipo.startsWith('OP_LESS')) {
+    return {
+      funcao: 'lexer_proximo_token -> lexer_ler_operador',
+      snippet: `${LEXER_SNIPPETS.operadorRelacional}\n\n${LEXER_SNIPPETS.avancar}`,
+      rastro: montarRastroCaracteres(token)
+    }
+  }
+  if (tipo.startsWith('OP_') || tipo.startsWith('DELIM_')) {
+    return {
+      funcao: 'lexer_proximo_token (bloco de operadores/delimitadores)',
+      snippet: `${LEXER_SNIPPETS.delimitadorOuAritmetico}\n\n${LEXER_SNIPPETS.avancar}`,
+      rastro: montarRastroCaracteres(token)
+    }
+  }
+
+  return {
+    funcao: 'lexer_proximo_token (fallback de erro)',
+    snippet: `${LEXER_SNIPPETS.erro}\n\n${LEXER_SNIPPETS.avancar}`,
+    rastro: montarRastroCaracteres(token)
+  }
+}
+
+function buildExecutionTrace(codigo, resultado) {
+  const linhasFonte = codigo.split('\n')
+  const steps = []
+
+  steps.push({
+    stage: 'entrada',
+    title: 'Entrada do compilador',
+    detail: `O compilador recebe ${linhasFonte.length} linha(s) de texto HomeScript.`,
+    output: 'Objeto de entrada com o código bruto.'
+  })
+
+  linhasFonte.forEach((linha, index) => {
+    const texto = linha.trim()
+    if (!texto || texto.startsWith('//')) return
+    steps.push({
+      stage: 'leitura',
+      line: index + 1,
+      title: `Leitura da linha ${index + 1}`,
+      detail: `Texto lido: "${texto}"`,
+      output: 'A linha segue para o analisador léxico.'
+    })
+  })
+
+  const tokens = Array.isArray(resultado?.tokens) ? resultado.tokens : []
+  const tokensSemEof = tokens.filter((token) => token.tipo !== 'EOF')
+  tokensSemEof.forEach((token, index) => {
+    const debug = mapearDebugLexico(token)
+    steps.push({
+      stage: 'lexico',
+      line: token.linha,
+      title: `Token ${index + 1} de ${tokensSemEof.length}`,
+      detail: `Lexema "${token.valor}" foi classificado como ${token.tipo}.`,
+      output: `Token = { tipo: ${token.tipo}, valor: "${token.valor}", linha: ${token.linha}, coluna: ${token.coluna} }`,
+      debug
+    })
+  })
+
+  if (tokens.length > 0) {
+    steps.push({
+      stage: 'lexico',
+      title: 'Fim da análise léxica',
+      detail: 'Todos os tokens foram identificados e ordenados.',
+      output: `Fluxo total: ${tokens.length} token(s), incluindo EOF.`
+    })
+  }
+
+  const nosAst = coletarNosAst(resultado?.ast)
+  nosAst.forEach((no, index) => {
+    steps.push({
+      stage: 'sintatico',
+      line: no.linha,
+      title: `Nó AST ${index + 1} de ${nosAst.length}`,
+      detail: `Parser consumiu tokens e montou o nó ${no.tipo}.`,
+      output: resumirNoAst(no)
+    })
+  })
+
+  if (nosAst.length > 0) {
+    steps.push({
+      stage: 'sintatico',
+      title: 'Fim da análise sintática',
+      detail: 'A sequência de tokens foi organizada em árvore (AST).',
+      output: `AST com ${nosAst.length} nó(s) úteis.`
+    })
+  }
+
+  if (resultado?.sucesso) {
+    steps.push({
+      stage: 'semantico',
+      title: 'Análise semântica',
+      detail: 'Verificação de consistência (símbolos, uso válido e regras da linguagem).',
+      output: 'Sem erros semânticos.'
+    })
+  } else {
+    const erros = Array.isArray(resultado?.erros) ? resultado.erros : []
+    if (erros.length === 0) {
+      steps.push({
+        stage: 'semantico',
+        title: 'Análise interrompida',
+        detail: resultado?.erro || 'Falha de compilação.',
+        output: 'Compilação finalizou com erro.'
+      })
+    } else {
+      erros.forEach((erro, index) => {
+        steps.push({
+          stage: 'semantico',
+          line: erro.linha,
+          title: `Erro ${index + 1} de ${erros.length}`,
+          detail: `[${erro.fase || 'erro'}] ${erro.mensagem}`,
+          output: `Linha ${erro.linha ?? '-'}, coluna ${erro.coluna ?? '-'}`
+        })
+      })
+    }
+  }
+
+  const codigoGerado = resultado?.codigo_c || ''
+  if (codigoGerado) {
+    const linhasGeradas = codigoGerado.split('\n')
+    steps.push({
+      stage: 'codegen',
+      title: 'Início da geração de código',
+      detail: 'O gerador percorre a AST e escreve o código C final.',
+      output: `Saída com ${linhasGeradas.length} linha(s).`
+    })
+
+    linhasGeradas.forEach((linha, index) => {
+      const texto = linha.trim()
+      if (!texto) return
+      steps.push({
+        stage: 'codegen',
+        title: `Linha C ${index + 1}`,
+        detail: `Trecho gerado: "${texto}"`,
+        output: 'Linha adicionada ao arquivo de saída C.'
+      })
+    })
+  }
+
+  return { linhasFonte, steps }
+}
+
+function CodeBlock({ text }) {
+  const lines = String(text || '').split('\n')
+  return (
+    <div className="trace-codeblock">
+      {lines.map((line, idx) => (
+        <div key={idx} className="trace-codeblock-line">
+          <span className="trace-codeblock-ln">{String(idx + 1).padStart(2, '0')}</span>
+          <span className="trace-codeblock-text">{line || ' '}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* ===== Componente: TokensView ===== */
 function TokensView({ tokens }) {
   if (!tokens || tokens.length === 0) {
@@ -286,6 +570,126 @@ function CodeView({ code }) {
 
   return (
     <pre className="code-output fade-in">{code}</pre>
+  )
+}
+
+function ExecutionTraceView({ codigo, resultado }) {
+  const [currentStep, setCurrentStep] = useState(0)
+  const [playing, setPlaying] = useState(false)
+  const trace = useMemo(() => buildExecutionTrace(codigo, resultado), [codigo, resultado])
+  const step = trace.steps[currentStep]
+
+  useEffect(() => {
+    if (!playing) return
+    if (trace.steps.length === 0) return
+
+    const timer = setInterval(() => {
+      setCurrentStep((prev) => {
+        if (prev >= trace.steps.length - 1) {
+          setPlaying(false)
+          return prev
+        }
+        return prev + 1
+      })
+    }, 1200)
+
+    return () => clearInterval(timer)
+  }, [playing, trace.steps.length])
+
+  if (!resultado) {
+    return (
+      <div className="empty-state">
+        <div className="empty-icon">🧭</div>
+        <div className="empty-text">Compile para ver a execução linha a linha</div>
+      </div>
+    )
+  }
+
+  if (trace.steps.length === 0) {
+    return (
+      <div className="empty-state">
+        <div className="empty-icon">🧭</div>
+        <div className="empty-text">Nenhuma etapa disponível para este código</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="trace-layout fade-in">
+      <div className="trace-toolbar">
+        <button
+          className="trace-btn"
+          onClick={() => setCurrentStep((prev) => Math.max(prev - 1, 0))}
+          disabled={currentStep === 0}
+        >
+          Anterior
+        </button>
+        <button
+          className="trace-btn trace-btn-primary"
+          onClick={() => setPlaying((prev) => !prev)}
+        >
+          {playing ? 'Pausar' : 'Auto Play'}
+        </button>
+        <button
+          className="trace-btn"
+          onClick={() => setCurrentStep((prev) => Math.min(prev + 1, trace.steps.length - 1))}
+          disabled={currentStep >= trace.steps.length - 1}
+        >
+          Próximo
+        </button>
+        <div className="trace-progress">
+          Etapa {currentStep + 1} / {trace.steps.length}
+        </div>
+      </div>
+
+      <div className="trace-grid">
+        <div className="trace-source">
+          <div className="trace-card-title">Código de Entrada</div>
+          <pre className="trace-code">
+            {trace.linhasFonte.map((linha, index) => {
+              const lineNumber = index + 1
+              const active = step?.line === lineNumber
+              return (
+                <div key={lineNumber} className={`trace-line ${active ? 'active' : ''}`}>
+                  <span className="trace-ln">{String(lineNumber).padStart(2, '0')}</span>
+                  <span>{linha || ' '}</span>
+                </div>
+              )
+            })}
+          </pre>
+        </div>
+
+        <div className="trace-details">
+          <div className="trace-card-title">Estado da Execução</div>
+          <div className="trace-stage">{step.stage.toUpperCase()}</div>
+          <div className="trace-title">{step.title}</div>
+          <div className="trace-detail">{step.detail}</div>
+          <div className="trace-output-label">Saída da etapa</div>
+          <pre className="trace-output">{step.output}</pre>
+          {step.stage === 'lexico' && step.debug && (
+            <>
+              <div className="trace-output-label">Função interna usada</div>
+              <CodeBlock text={step.debug.funcao} />
+              <div className="trace-output-label">Código interno do lexer</div>
+              <CodeBlock text={step.debug.snippet} />
+              <div className="trace-output-label">Consumo caractere por caractere</div>
+              <div className="trace-char-list">
+                {(step.debug.rastro || []).length === 0 && (
+                  <div className="trace-char-empty">Sem rastro para este token</div>
+                )}
+                {(step.debug.rastro || []).map((item) => (
+                  <div key={`${item.indice}-${item.coluna}`} className="trace-char-item">
+                    <span className="trace-char-index">#{item.indice}</span>
+                    <span className="trace-char-value">'{item.caractere}'</span>
+                    <span className="trace-char-col">coluna {item.coluna}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -414,13 +818,16 @@ function App() {
   const [modo, setModo] = useState('editor') // 'editor' | 'visual'
   const [codigo, setCodigo] = useState(EXEMPLOS[0].codigo)
   const [resultado, setResultado] = useState(null)
-  const [abaResultado, setAbaResultado] = useState('codigo')
+  const [abaResultado, setAbaResultado] = useState('execucao')
   const [compilando, setCompilando] = useState(false)
   const [erro, setErro] = useState(null)
   const [erroDetalhes, setErroDetalhes] = useState([])
   const [showExemplos, setShowExemplos] = useState(false)
+  const [editorWidth, setEditorWidth] = useState(58)
   const editorRef = useRef(null)
   const compileActionRef = useRef(() => {})
+  const draggingSplitRef = useRef(false)
+  const containerRef = useRef(null)
 
   const handleCompile = useCallback(async () => {
     if (!codigo.trim()) return
@@ -433,7 +840,7 @@ function App() {
       const res = await compilar(codigo)
       if (res.sucesso) {
         setResultado(res)
-        setAbaResultado('codigo')
+        setAbaResultado('execucao')
         setErroDetalhes([])
       } else {
         setErro(res.erro || 'Erro desconhecido')
@@ -456,6 +863,28 @@ function App() {
       }
     }
   }, [compilando, handleCompile])
+
+  useEffect(() => {
+    function onMouseMove(e) {
+      if (!draggingSplitRef.current || !containerRef.current) return
+      const rect = containerRef.current.getBoundingClientRect()
+      if (rect.width <= 0) return
+      const next = ((e.clientX - rect.left) / rect.width) * 100
+      const clamped = Math.min(80, Math.max(20, next))
+      setEditorWidth(clamped)
+    }
+
+    function onMouseUp() {
+      draggingSplitRef.current = false
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   const handleExemploClick = (exemplo) => {
     setCodigo(exemplo.codigo)
@@ -535,9 +964,9 @@ function App() {
           </div>
 
           {/* Área principal */}
-          <div className="main-content">
+          <div className="main-content" ref={containerRef}>
             {/* Editor */}
-            <div className="editor-panel">
+            <div className="editor-panel" style={{ flex: `0 0 ${editorWidth}%` }}>
               <div className="panel-header">
                 <span className="panel-title">homescript (.iot)</span>
               </div>
@@ -584,12 +1013,26 @@ function App() {
               </div>
             </div>
 
+            <div
+              className="panel-resizer"
+              onMouseDown={() => {
+                draggingSplitRef.current = true
+              }}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Redimensionar paineis"
+            />
+
             {/* Painel de Resultado */}
-            <div className="result-panel">
+            <div className="result-panel" style={{ flex: `0 0 ${100 - editorWidth}%` }}>
               <div className="result-tabs">
                 <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
                   onClick={() => setAbaResultado('codigo')}>
                   Código C
+                </button>
+                <button className={`result-tab ${abaResultado === 'execucao' ? 'active' : ''}`}
+                  onClick={() => setAbaResultado('execucao')}>
+                  Execução
                 </button>
                 <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
                   onClick={() => setAbaResultado('tokens')}>
@@ -620,6 +1063,13 @@ function App() {
                     {abaResultado === 'tokens' && <TokensView tokens={resultado?.tokens} />}
                     {abaResultado === 'ast' && <ASTView ast={resultado?.ast} />}
                     {abaResultado === 'codigo' && <CodeView code={resultado?.codigo_c} />}
+                    {abaResultado === 'execucao' && (
+                      <ExecutionTraceView
+                        key={`${codigo.length}-${resultado?.tokens?.length || 0}-${resultado?.codigo_c?.length || 0}`}
+                        codigo={codigo}
+                        resultado={resultado}
+                      />
+                    )}
                   </>
                 )}
               </div>
