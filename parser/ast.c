@@ -22,6 +22,7 @@ ASTNode* ast_criar_no(NodeType tipo) {
     no->valor_comparacao[0] = '\0';
     no->estado = STATE_ON;
     no->tempo_espera = 0;
+    no->expressao[0] = '\0';
     no->num_filhos = 0;
 
     int i;
@@ -47,6 +48,9 @@ const char* ast_tipo_nome(NodeType tipo) {
         case NODE_PROGRAM:      return "Program";
         case NODE_DEVICE_DECL:  return "DeviceDeclaration";
         case NODE_SENSOR_DECL:  return "SensorDeclaration";
+        case NODE_VAR_DECL:     return "VariableDeclaration";
+        case NODE_ASSIGN_CMD:   return "Assignment";
+        case NODE_PRINT_CMD:    return "PrintCommand";
         case NODE_TURN_CMD:     return "TurnCommand";
         case NODE_WAIT_CMD:     return "WaitCommand";
         case NODE_IF_STMT:      return "IfStatement";
@@ -103,6 +107,15 @@ void ast_imprimir(ASTNode *no, int nivel) {
         case NODE_TURN_CMD:
             printf(" (dispositivo: %s, estado: %s)\n",
                    no->nome, no->estado == STATE_ON ? "ON" : "OFF");
+            break;
+        case NODE_VAR_DECL:
+            printf(" (nome: %s, expr: %s)\n", no->nome, no->expressao);
+            break;
+        case NODE_ASSIGN_CMD:
+            printf(" (nome: %s, expr: %s)\n", no->nome, no->expressao);
+            break;
+        case NODE_PRINT_CMD:
+            printf(" (expr: %s)\n", no->expressao);
             break;
         case NODE_WAIT_CMD:
             printf(" (tempo: %d ms)\n", no->tempo_espera);

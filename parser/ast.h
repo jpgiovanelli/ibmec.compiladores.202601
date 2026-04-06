@@ -13,6 +13,9 @@ typedef enum {
     NODE_PROGRAM,           /* Nó raiz: contém lista de declarações */
     NODE_DEVICE_DECL,       /* Declaração de dispositivo */
     NODE_SENSOR_DECL,       /* Declaração de sensor */
+    NODE_VAR_DECL,          /* Declaração de variável (let) */
+    NODE_ASSIGN_CMD,        /* Atribuição de variável */
+    NODE_PRINT_CMD,         /* Impressão serial */
     NODE_TURN_CMD,          /* Comando turn on/off */
     NODE_WAIT_CMD,          /* Comando wait */
     NODE_IF_STMT,           /* Estrutura if */
@@ -39,6 +42,7 @@ typedef enum {
 
 /* ---------- Nó genérico da AST ---------- */
 #define MAX_NAME_LEN 64
+#define MAX_EXPR_LEN 256
 #define MAX_CHILDREN 64
 
 typedef struct ASTNode {
@@ -51,6 +55,7 @@ typedef struct ASTNode {
     char valor_comparacao[MAX_NAME_LEN]; /* valor comparado */
     DeviceState estado;                /* on ou off */
     int tempo_espera;                  /* milissegundos para wait */
+    char expressao[MAX_EXPR_LEN];      /* expressão de var/assign/print */
 
     /* Filhos */
     struct ASTNode *filhos[MAX_CHILDREN];

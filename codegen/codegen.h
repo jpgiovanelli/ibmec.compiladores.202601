@@ -18,6 +18,8 @@ typedef struct {
     char codigo[MAX_CODE_LEN];
     int posicao;
     int nivel_indentacao;
+    char sensores[64][MAX_NAME_LEN];
+    int num_sensores;
 } CodeGenerator;
 
 /* ---------- Funções Públicas ---------- */

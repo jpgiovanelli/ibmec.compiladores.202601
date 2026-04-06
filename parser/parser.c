@@ -6,9 +6,12 @@
  * Gramática da linguagem:
  *
  * Program     -> Statement*
- * Statement   -> DeviceDecl | SensorDecl | TurnCmd | WaitCmd | IfStmt | WhenStmt
+ * Statement   -> DeviceDecl | SensorDecl | VarDecl | AssignCmd | PrintCmd | TurnCmd | WaitCmd | IfStmt | WhenStmt
  * DeviceDecl  -> 'device' IDENTIFIER 'pin' (NUMBER | ANALOG_PIN) ';'
  * SensorDecl  -> 'sensor' IDENTIFIER 'pin' (NUMBER | ANALOG_PIN) ';'
+ * VarDecl     -> 'let' IDENTIFIER '=' Expression ';'
+ * AssignCmd   -> IDENTIFIER '=' Expression ';'
+ * PrintCmd    -> 'print' Expression ';'
  * TurnCmd     -> 'turn' IDENTIFIER ('on' | 'off') ';'
  *             |  'ligar' IDENTIFIER ';'
  *             |  'desligar' IDENTIFIER ';'
@@ -78,6 +81,105 @@ static int eh_operador(TokenType tipo) {
            tipo == TOKEN_OP_LESS ||
            tipo == TOKEN_OP_GREATER_EQUAL ||
            tipo == TOKEN_OP_LESS_EQUAL;
+}
+
+/* ---------- Parsing de Expressões ---------- */
+
+/* Declarações antecipadas */
+static int parser_expressao(Parser *parser, char *saida, int max_saida);
+
+/* Concatena parte de expressão com checagem de limite */
+static int expr_set(char *dest, int max_dest, const char *src) {
+    if ((int)strlen(src) >= max_dest) return 0;
+    strcpy(dest, src);
+    return 1;
+}
+
+/* Fator -> NUMBER | IDENTIFIER | '(' Expression ')' */
+static int parser_fator(Parser *parser, char *saida, int max_saida) {
+    char interno[MAX_EXPR_LEN];
+
+    if (parser_verificar(parser, TOKEN_NUMBER) || parser_verificar(parser, TOKEN_IDENTIFIER)) {
+        return expr_set(saida, max_saida, parser->token_atual.valor) ? (parser_avancar(parser), 1) : 0;
+    }
+
+    if (parser_verificar(parser, TOKEN_LPAREN)) {
+        parser_avancar(parser); /* consome '(' */
+        if (!parser_expressao(parser, interno, sizeof(interno))) {
+            return 0;
+        }
+        if (!parser_consumir(parser, TOKEN_RPAREN, "')' esperado para fechar expressão")) {
+            return 0;
+        }
+        return snprintf(saida, max_saida, "(%s)", interno) < max_saida;
+    }
+
+    parser_registrar_erro(parser, "Fator inválido na expressão");
+    return 0;
+}
+
+/* Termo -> Fator (('*'|'/') Fator)* */
+static int parser_termo(Parser *parser, char *saida, int max_saida) {
+    char acumulado[MAX_EXPR_LEN];
+    char temp[MAX_EXPR_LEN];
+    char direito[MAX_EXPR_LEN];
+    char operador[2];
+    TokenType op;
+
+    if (!parser_fator(parser, acumulado, sizeof(acumulado))) {
+        return 0;
+    }
+
+    while (parser_verificar(parser, TOKEN_OP_MULT) || parser_verificar(parser, TOKEN_OP_DIV)) {
+        op = parser->token_atual.tipo;
+        operador[0] = (op == TOKEN_OP_MULT) ? '*' : '/';
+        operador[1] = '\0';
+        parser_avancar(parser);
+
+        if (!parser_fator(parser, direito, sizeof(direito))) {
+            return 0;
+        }
+
+        if (snprintf(temp, sizeof(temp), "%s %s %s", acumulado, operador, direito) >= (int)sizeof(temp)) {
+            parser_registrar_erro(parser, "Expressão muito longa");
+            return 0;
+        }
+        strcpy(acumulado, temp);
+    }
+
+    return expr_set(saida, max_saida, acumulado);
+}
+
+/* Expression -> Termo (('+'|'-') Termo)* */
+static int parser_expressao(Parser *parser, char *saida, int max_saida) {
+    char acumulado[MAX_EXPR_LEN];
+    char temp[MAX_EXPR_LEN];
+    char direito[MAX_EXPR_LEN];
+    char operador[2];
+    TokenType op;
+
+    if (!parser_termo(parser, acumulado, sizeof(acumulado))) {
+        return 0;
+    }
+
+    while (parser_verificar(parser, TOKEN_OP_PLUS) || parser_verificar(parser, TOKEN_OP_MINUS)) {
+        op = parser->token_atual.tipo;
+        operador[0] = (op == TOKEN_OP_PLUS) ? '+' : '-';
+        operador[1] = '\0';
+        parser_avancar(parser);
+
+        if (!parser_termo(parser, direito, sizeof(direito))) {
+            return 0;
+        }
+
+        if (snprintf(temp, sizeof(temp), "%s %s %s", acumulado, operador, direito) >= (int)sizeof(temp)) {
+            parser_registrar_erro(parser, "Expressão muito longa");
+            return 0;
+        }
+        strcpy(acumulado, temp);
+    }
+
+    return expr_set(saida, max_saida, acumulado);
 }
 
 /* ---------- Funções de Parsing ---------- */
@@ -153,6 +255,93 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
     }
 
     if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após declaração de sensor")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    return no;
+}
+
+/* Declaração de variável: let IDENTIFIER = Expression ; */
+static ASTNode* parser_var_decl(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_VAR_DECL);
+    char expr[MAX_EXPR_LEN];
+
+    parser_avancar(parser); /* consome 'let' */
+
+    if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
+        parser_registrar_erro(parser, "Nome da variável esperado após 'let'");
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+    parser_avancar(parser);
+
+    if (!parser_consumir(parser, TOKEN_OP_ASSIGN, "'=' esperado na declaração de variável")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    if (!parser_expressao(parser, expr, sizeof(expr))) {
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->expressao, expr, MAX_EXPR_LEN - 1);
+
+    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após declaração de variável")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    return no;
+}
+
+/* Atribuição: IDENTIFIER = Expression ; */
+static ASTNode* parser_assign_cmd(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_ASSIGN_CMD);
+    char expr[MAX_EXPR_LEN];
+
+    if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
+        parser_registrar_erro(parser, "Nome da variável esperado na atribuição");
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+    parser_avancar(parser);
+
+    if (!parser_consumir(parser, TOKEN_OP_ASSIGN, "'=' esperado na atribuição")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    if (!parser_expressao(parser, expr, sizeof(expr))) {
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->expressao, expr, MAX_EXPR_LEN - 1);
+
+    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após atribuição")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    return no;
+}
+
+/* Print: print Expression ; */
+static ASTNode* parser_print_cmd(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_PRINT_CMD);
+    char expr[MAX_EXPR_LEN];
+
+    parser_avancar(parser); /* consome 'print' */
+
+    if (!parser_expressao(parser, expr, sizeof(expr))) {
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->expressao, expr, MAX_EXPR_LEN - 1);
+
+    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após print")) {
         ast_destruir(no);
         return NULL;
     }
@@ -363,11 +552,17 @@ static ASTNode* parser_statement(Parser *parser) {
             return parser_device_decl(parser);
         case TOKEN_SENSOR:
             return parser_sensor_decl(parser);
+        case TOKEN_LET:
+            return parser_var_decl(parser);
+        case TOKEN_PRINT:
+            return parser_print_cmd(parser);
         case TOKEN_TURN:
             return parser_turn_cmd(parser);
         case TOKEN_LIGAR:
         case TOKEN_DESLIGAR:
             return parser_turn_cmd(parser);
+        case TOKEN_IDENTIFIER:
+            return parser_assign_cmd(parser);
         case TOKEN_WAIT:
             return parser_wait_cmd(parser);
         case TOKEN_IF:
