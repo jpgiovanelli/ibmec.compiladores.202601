@@ -297,6 +297,7 @@ function App() {
   const [abaResultado, setAbaResultado] = useState('codigo')
   const [compilando, setCompilando] = useState(false)
   const [erro, setErro] = useState(null)
+  const [erroDetalhes, setErroDetalhes] = useState([])
   const [showExemplos, setShowExemplos] = useState(false)
 
   const handleCompile = useCallback(async () => {
@@ -304,18 +305,22 @@ function App() {
 
     setCompilando(true)
     setErro(null)
+    setErroDetalhes([])
 
     try {
       const res = await compilar(codigo)
       if (res.sucesso) {
         setResultado(res)
         setAbaResultado('codigo')
+        setErroDetalhes([])
       } else {
         setErro(res.erro || 'Erro desconhecido')
+        setErroDetalhes(Array.isArray(res.erros) ? res.erros : [])
         setResultado(null)
       }
     } catch (e) {
       setErro('Erro ao conectar com o servidor. Verifique se o backend está rodando (python app.py)')
+      setErroDetalhes([])
       setResultado(null)
     } finally {
       setCompilando(false)
@@ -327,6 +332,7 @@ function App() {
     setShowExemplos(false)
     setResultado(null)
     setErro(null)
+    setErroDetalhes([])
   }
 
   const handleVisualGenerate = (generatedCode) => {
@@ -334,6 +340,7 @@ function App() {
     setModo('editor')
     setResultado(null)
     setErro(null)
+    setErroDetalhes([])
   }
 
   return (
@@ -434,7 +441,18 @@ function App() {
 
               <div className="result-content">
                 {erro ? (
-                  <div className="error-box fade-in">❌ {erro}</div>
+                  <div className="error-box fade-in">
+                    <div>❌ {erro}</div>
+                    {erroDetalhes.length > 0 && (
+                      <div className="error-list">
+                        {erroDetalhes.map((item, idx) => (
+                          <div key={idx} className="error-item">
+                            {`[${item.fase || 'erro'}] linha ${item.linha ?? '-'}, coluna ${item.coluna ?? '-'}: ${item.mensagem || 'Erro sem detalhes'}`}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <>
                     {abaResultado === 'tokens' && <TokensView tokens={resultado?.tokens} />}

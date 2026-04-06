@@ -9,12 +9,14 @@ TARGET = homescript
 LEXER_DIR = ../lexer
 PARSER_DIR = ../parser
 CODEGEN_DIR = ../codegen
+SEMANTIC_DIR = ../semantic
 
 # Arquivos fonte
 SRCS = main.c \
        $(LEXER_DIR)/lexer.c \
        $(PARSER_DIR)/parser.c \
        $(PARSER_DIR)/ast.c \
+       $(SEMANTIC_DIR)/semantic.c \
        $(CODEGEN_DIR)/codegen.c
 
 # Arquivo de saída

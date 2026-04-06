@@ -16,6 +16,8 @@ typedef struct {
     Lexer *lexer;
     Token token_atual;
     int erro;
+    int erro_linha;
+    int erro_coluna;
     char mensagem_erro[512];
 } Parser;
 
