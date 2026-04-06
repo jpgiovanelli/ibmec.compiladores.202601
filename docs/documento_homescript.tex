@@ -1,0 +1,499 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{geometry}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{setspace}
+
+\geometry{margin=2.5cm}
+\setstretch{1.15}
+\setlength{\tabcolsep}{4pt}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  pdftitle={Documentação da Linguagem HomeScript},
+  pdfauthor={Projeto HomeScript}
+}
+
+\lstdefinestyle{homescript}{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!60!black}\bfseries,
+  commentstyle=\color{green!40!black},
+  stringstyle=\color{red!50!black},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  stepnumber=1,
+  numbersep=8pt,
+  frame=single,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=2
+}
+
+\title{Documentação Técnica -- HomeScript\\\large Definição da Linguagem, Tabela de Tokens, Analisador Léxico e Sintático}
+\author{Projeto de Compiladores}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Introdução}
+HomeScript é uma linguagem de domínio específico para automação residencial. O objetivo da linguagem é permitir que o usuário descreva regras de controle (sensores, dispositivos e ações) em alto nível e, depois, transformar essas regras em código C.
+
+Este documento apresenta os quatro itens solicitados:
+\begin{enumerate}[label=\arabic*.]
+  \item Definição da linguagem;
+  \item Tabela de tokens;
+  \item Funcionamento do analisador léxico;
+  \item Funcionamento do analisador sintático.
+\end{enumerate}
+
+\section{Definição da Linguagem}
+
+\subsection{Objetivo}
+A linguagem foi projetada para descrever:
+\begin{itemize}
+  \item declaração de \textbf{dispositivos} (saídas controláveis);
+  \item declaração de \textbf{sensores} (entradas);
+  \item comandos de controle (ligar, desligar, esperar e imprimir);
+  \item regras condicionais e orientadas a evento (\texttt{if} e \texttt{when}).
+\end{itemize}
+
+\subsection{Elementos Básicos}
+\begin{itemize}
+  \item \textbf{Identificadores}: nomes de variáveis, sensores e dispositivos.
+  \item \textbf{Literais numéricos}: inteiros para pinos e tempos.
+  \item \textbf{Pinos analógicos}: formato \texttt{A0}, \texttt{A1} etc.
+  \item \textbf{Blocos}: delimitados por \texttt{\{} e \texttt{\}}.
+  \item \textbf{Terminador de comando}: \texttt{;}.
+\end{itemize}
+
+\subsection{Comandos Suportados}
+\begin{itemize}
+  \item Declaração de dispositivo: \texttt{device <nome> pin <numero>;}
+  \item Declaração de sensor: \texttt{sensor <nome> pin <numero|A0>;}
+  \item Declaração de variável: \texttt{let <id> = <expressao>;}
+  \item Atribuição: \texttt{<id> = <expressao>;}
+  \item Impressão: \texttt{print <expressao>;}
+  \item Ação de dispositivo: \texttt{turn <id> on;} / \texttt{turn <id> off;}
+  \item Atalhos em português: \texttt{ligar <id>;} / \texttt{desligar <id>;}
+  \item Espera: \texttt{wait <numero>;}
+  \item Condicional: \texttt{if <condicao> \{ ... \}}
+  \item Regra por evento: \texttt{when <condicao> \{ ... \}}
+\end{itemize}
+
+\subsection{Operadores}
+\begin{itemize}
+  \item Relacionais: \texttt{==}, \texttt{!=}, \texttt{>}, \texttt{<}, \texttt{>=}, \texttt{<=}
+  \item Aritméticos: \texttt{+}, \texttt{-}, \texttt{*}, \texttt{/}
+  \item Atribuição: \texttt{=}
+\end{itemize}
+
+\subsection{Exemplo de Programa}
+\begin{lstlisting}[style=homescript]
+// Exemplo simples HomeScript
+device luz pin 13;
+sensor movimento pin 2;
+
+when movimento == detected {
+    turn luz on;
+    wait 5000;
+    turn luz off;
+}
+\end{lstlisting}
+
+\section{Sintaxe da Linguagem}
+Nesta documentação, a sintaxe considerada pelo parser contempla:
+\begin{itemize}
+  \item declarações: \texttt{device}, \texttt{sensor}, \texttt{let};
+  \item comandos: atribuição, \texttt{print}, \texttt{turn}, \texttt{wait};
+  \item estruturas de controle: \texttt{if} e \texttt{when} com bloco entre chaves;
+  \item expressões aritméticas com precedência entre \texttt{+ - * /};
+  \item condições relacionais com \texttt{== != > < >= <=}.
+\end{itemize}
+
+\section{Tabela de Tokens}
+A seguir estão os tokens reconhecidos pelo analisador léxico.
+
+\subsection{Palavras-chave (inglês)}
+\begin{longtable}{>{\raggedright\arraybackslash\ttfamily}p{2.8cm} >{\raggedright\arraybackslash\ttfamily}p{5.5cm} >{\raggedright\arraybackslash}p{4.9cm}}
+\toprule
+\textnormal{Lexema} & \textnormal{Classe} & \textnormal{Exemplo de uso} \\
+\midrule
+\endhead
+device & KEYWORD\_DEVICE & device luz pin 13; \\
+sensor & KEYWORD\_SENSOR & sensor temperatura pin A0; \\
+pin & KEYWORD\_PIN & device luz pin 13; \\
+let & KEYWORD\_LET & let x = 10; \\
+print & KEYWORD\_PRINT & print x; \\
+turn & KEYWORD\_TURN & turn luz on; \\
+on & KEYWORD\_ON & turn luz on; \\
+off & KEYWORD\_OFF & turn luz off; \\
+wait & KEYWORD\_WAIT & wait 1000; \\
+if & KEYWORD\_IF & if temp > 30 \{ ... \} \\
+when & KEYWORD\_WHEN & when mov == detected \{ ... \} \\
+detected & KEYWORD\_DETECTED & when mov == detected \{ ... \} \\
+not\_detected & KEYWORD\_NOT\_DETECTED & when mov == not\_detected \{ ... \} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Palavras-chave (sinônimos em português)}
+\begin{longtable}{>{\raggedright\arraybackslash\ttfamily}p{2.8cm} >{\raggedright\arraybackslash\ttfamily}p{5.5cm} >{\raggedright\arraybackslash}p{4.9cm}}
+\toprule
+\textnormal{Lexema} & \textnormal{Classe} & \textnormal{Observação} \\
+\midrule
+\endhead
+dispositivo & KEYWORD\_DEVICE & sinônimo de \texttt{device} \\
+pino & KEYWORD\_PIN & sinônimo de \texttt{pin} \\
+se & KEYWORD\_IF & sinônimo de \texttt{if} \\
+quando & KEYWORD\_WHEN & sinônimo de \texttt{when} \\
+esperar & KEYWORD\_WAIT & sinônimo de \texttt{wait} \\
+detectado & KEYWORD\_DETECTED & sinônimo de \texttt{detected} \\
+nao\_detectado & KEYWORD\_NOT\_DETECTED & sinônimo de \texttt{not\_detected} \\
+ligar & KEYWORD\_LIGAR & atalho semântico para \texttt{turn ... on} \\
+desligar & KEYWORD\_DESLIGAR & atalho semântico para \texttt{turn ... off} \\
+\bottomrule
+\end{longtable}
+
+\subsection{Identificadores e Literais}
+\begin{longtable}{>{\raggedright\arraybackslash\ttfamily}p{2.8cm} >{\raggedright\arraybackslash\ttfamily}p{5.5cm} >{\raggedright\arraybackslash}p{4.9cm}}
+\toprule
+\textnormal{Padrão} & \textnormal{Classe} & \textnormal{Regex} \\
+\midrule
+\endhead
+nome (ex: luz) & IDENTIFIER & [a-zA-Z\_][a-zA-Z0-9\_]* \\
+13, 1000, 42 & NUMBER & [0-9]+ \\
+A0, A1, A5 & ANALOG\_PIN & A[0-9]+ \\
+\bottomrule
+\end{longtable}
+
+\subsection{Operadores}
+\begin{longtable}{>{\raggedright\arraybackslash\ttfamily}p{1.8cm} >{\raggedright\arraybackslash\ttfamily}p{4.8cm} >{\raggedright\arraybackslash}p{5.8cm}}
+\toprule
+\textnormal{Lexema} & \textnormal{Classe} & \textnormal{Descrição} \\
+\midrule
+\endhead
+== & OP\_EQUAL & igualdade \\
+= & OP\_ASSIGN & atribuição \\
+!= & OP\_NOT\_EQUAL & diferente de \\
+> & OP\_GREATER & maior que \\
+< & OP\_LESS & menor que \\
+>= & OP\_GREATER\_EQUAL & maior ou igual \\
+<= & OP\_LESS\_EQUAL & menor ou igual \\
++ & OP\_PLUS & soma \\
+- & OP\_MINUS & subtração \\
+* & OP\_MULT & multiplicação \\
+/ & OP\_DIV & divisão \\
+\bottomrule
+\end{longtable}
+
+\subsection{Delimitadores e especiais}
+\begin{longtable}{>{\raggedright\arraybackslash\ttfamily}p{1.8cm} >{\raggedright\arraybackslash\ttfamily}p{4.8cm} >{\raggedright\arraybackslash}p{5.8cm}}
+\toprule
+\textnormal{Lexema} & \textnormal{Classe} & \textnormal{Descrição} \\
+\midrule
+\endhead
+\{ & DELIM\_LBRACE & início de bloco \\
+\} & DELIM\_RBRACE & fim de bloco \\
+; & DELIM\_SEMICOLON & fim de comando \\
+( & DELIM\_LPAREN & abre parêntese \\
+) & DELIM\_RPAREN & fecha parêntese \\
+EOF & EOF & fim de arquivo \\
+caractere inválido & ERRO & token não reconhecido \\
+\bottomrule
+\end{longtable}
+
+\section{Analisador Léxico}
+
+\subsection{Objetivo}
+O analisador léxico recebe uma sequência de caracteres e produz uma sequência de tokens. Cada token possui: tipo, lexema (valor textual), linha e coluna.
+
+\subsection{Fluxo Geral}
+\begin{enumerate}[label=\arabic*.]
+  \item Inicializa leitura de arquivo e carrega o primeiro caractere.
+  \item Ignora espaços, tabulações, quebras de linha e comentários de linha (\texttt{//}).
+  \item Examina o caractere atual e decide qual rotina de reconhecimento usar.
+  \item Consome os caracteres do token atual.
+  \item Retorna um objeto token para o parser.
+  \item Repete até retornar \texttt{EOF}.
+\end{enumerate}
+
+\subsection{Regras de Reconhecimento}
+\subsubsection{Identificadores e palavras-chave}
+Se o primeiro caractere é letra ou \texttt{\_}, o lexer consome letras, dígitos e \texttt{\_}. Em seguida:
+\begin{itemize}
+  \item se o lexema pertencer ao conjunto de palavras reservadas, retorna o token de palavra-chave;
+  \item caso contrário, retorna \texttt{IDENTIFIER}.
+\end{itemize}
+
+\subsubsection{Números}
+Se o primeiro caractere é dígito, consome dígitos consecutivos e retorna \texttt{NUMBER}.
+
+\subsubsection{Pinos analógicos}
+Se encontrar \texttt{A} seguido de dígito, consome \texttt{A} + sequência numérica e retorna \texttt{ANALOG\_PIN}.
+
+\subsubsection{Operadores}
+\begin{itemize}
+  \item Reconhece operadores de dois caracteres com lookahead: \texttt{==}, \texttt{!=}, \texttt{>=}, \texttt{<=}.
+  \item Reconhece operadores de um caractere: \texttt{=}, \texttt{>}, \texttt{<}, \texttt{+}, \texttt{-}, \texttt{*}, \texttt{/}.
+\end{itemize}
+
+\subsubsection{Delimitadores}
+Reconhece \texttt{\{}, \texttt{\}}, \texttt{;}, \texttt{(}, \texttt{)}.
+
+\subsubsection{Erro léxico}
+Qualquer caractere que não atenda a nenhuma regra gera token de erro.
+
+\subsection{Expressões Regulares de Referência}
+\begin{itemize}
+  \item Identificador: \texttt{[a-zA-Z\_][a-zA-Z0-9\_]*}
+  \item Inteiro: \texttt{[0-9]+}
+  \item Pino analógico: \texttt{A[0-9]+}
+  \item Operadores relacionais: \texttt{(==|!=|>=|<=|>|<)}
+  \item Espaços em branco: \texttt{[ \textbackslash t\textbackslash r\textbackslash n]+}
+  \item Comentário de linha: \texttt{//[^\textbackslash n]*}
+\end{itemize}
+
+\subsection{Exemplo de Tokenização}
+Entrada:
+\begin{lstlisting}[style=homescript]
+device luz pin 13;
+\end{lstlisting}
+
+Saída léxica (ordem):
+\begin{enumerate}[label=\arabic*.]
+  \item KEYWORD\_DEVICE (\texttt{device})
+  \item IDENTIFIER (\texttt{luz})
+  \item KEYWORD\_PIN (\texttt{pin})
+  \item NUMBER (\texttt{13})
+  \item DELIM\_SEMICOLON (\texttt{;})
+\end{enumerate}
+
+\subsection{Código do Analisador Léxico (sem comentários)}
+\begin{lstlisting}[language=C,basicstyle=\ttfamily\scriptsize,frame=single,breaklines=true,numbers=left,numberstyle=\tiny]
+static void lexer_avancar(Lexer *lexer) {
+    if (lexer->eof) return;
+    lexer->caractere_atual = fgetc(lexer->arquivo);
+    if (lexer->caractere_atual == EOF) {
+        lexer->eof = 1;
+        lexer->caractere_atual = '\0';
+    } else if (lexer->caractere_atual == '\n') {
+        lexer->linha++;
+        lexer->coluna = 0;
+    } else {
+        lexer->coluna++;
+    }
+}
+
+static char lexer_espiar(Lexer *lexer) {
+    if (lexer->eof) return '\0';
+    char c = fgetc(lexer->arquivo);
+    if (c == EOF) return '\0';
+    ungetc(c, lexer->arquivo);
+    return c;
+}
+
+static Token lexer_ler_identificador(Lexer *lexer) {
+    char buffer[MAX_TOKEN_LEN];
+    int i = 0, linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
+    while (!lexer->eof && (isalnum(lexer->caractere_atual) || lexer->caractere_atual == '_')) {
+        if (i < MAX_TOKEN_LEN - 1) buffer[i++] = lexer->caractere_atual;
+        lexer_avancar(lexer);
+    }
+    buffer[i] = '\0';
+    return criar_token(verificar_palavra_reservada(buffer), buffer, linha_inicio, coluna_inicio);
+}
+
+static Token lexer_ler_numero(Lexer *lexer) {
+    char buffer[MAX_TOKEN_LEN];
+    int i = 0, linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
+    while (!lexer->eof && isdigit(lexer->caractere_atual)) {
+        if (i < MAX_TOKEN_LEN - 1) buffer[i++] = lexer->caractere_atual;
+        lexer_avancar(lexer);
+    }
+    buffer[i] = '\0';
+    return criar_token(TOKEN_NUMBER, buffer, linha_inicio, coluna_inicio);
+}
+
+static Token lexer_ler_operador(Lexer *lexer) {
+    int linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
+    char proximo;
+    switch (lexer->caractere_atual) {
+        case '=':
+            proximo = lexer_espiar(lexer);
+            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_EQUAL, "==", linha_inicio, coluna_inicio); }
+            lexer_avancar(lexer); return criar_token(TOKEN_OP_ASSIGN, "=", linha_inicio, coluna_inicio);
+        case '!':
+            proximo = lexer_espiar(lexer);
+            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_NOT_EQUAL, "!=", linha_inicio, coluna_inicio); }
+            lexer_avancar(lexer); return criar_token(TOKEN_ERROR, "!", linha_inicio, coluna_inicio);
+        case '>':
+            proximo = lexer_espiar(lexer);
+            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_GREATER_EQUAL, ">=", linha_inicio, coluna_inicio); }
+            lexer_avancar(lexer); return criar_token(TOKEN_OP_GREATER, ">", linha_inicio, coluna_inicio);
+        case '<':
+            proximo = lexer_espiar(lexer);
+            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_LESS_EQUAL, "<=", linha_inicio, coluna_inicio); }
+            lexer_avancar(lexer); return criar_token(TOKEN_OP_LESS, "<", linha_inicio, coluna_inicio);
+        default:
+            lexer_avancar(lexer); return criar_token(TOKEN_ERROR, "?", linha_inicio, coluna_inicio);
+    }
+}
+
+Token lexer_proximo_token(Lexer *lexer) {
+    lexer_pular_insignificantes(lexer);
+    if (lexer->eof) return criar_token(TOKEN_EOF, "EOF", lexer->linha, lexer->coluna);
+    char c = lexer->caractere_atual;
+    if (c == 'A' && isdigit(lexer_espiar(lexer))) return lexer_ler_pino_analogico(lexer);
+    if (isalpha(c) || c == '_') return lexer_ler_identificador(lexer);
+    if (isdigit(c)) return lexer_ler_numero(lexer);
+    if (c == '=' || c == '!' || c == '>' || c == '<') return lexer_ler_operador(lexer);
+    if (c == '+') { lexer_avancar(lexer); return criar_token(TOKEN_OP_PLUS, "+", lexer->linha, lexer->coluna); }
+    if (c == '-') { lexer_avancar(lexer); return criar_token(TOKEN_OP_MINUS, "-", lexer->linha, lexer->coluna); }
+    if (c == '*') { lexer_avancar(lexer); return criar_token(TOKEN_OP_MULT, "*", lexer->linha, lexer->coluna); }
+    if (c == '/') { lexer_avancar(lexer); return criar_token(TOKEN_OP_DIV, "/", lexer->linha, lexer->coluna); }
+    if (c == '{') { lexer_avancar(lexer); return criar_token(TOKEN_LBRACE, "{", lexer->linha, lexer->coluna); }
+    if (c == '}') { lexer_avancar(lexer); return criar_token(TOKEN_RBRACE, "}", lexer->linha, lexer->coluna); }
+    if (c == ';') { lexer_avancar(lexer); return criar_token(TOKEN_SEMICOLON, ";", lexer->linha, lexer->coluna); }
+    if (c == '(') { lexer_avancar(lexer); return criar_token(TOKEN_LPAREN, "(", lexer->linha, lexer->coluna); }
+    if (c == ')') { lexer_avancar(lexer); return criar_token(TOKEN_RPAREN, ")", lexer->linha, lexer->coluna); }
+    char erro[2] = {c, '\0'};
+    int linha = lexer->linha, coluna = lexer->coluna;
+    lexer_avancar(lexer);
+    return criar_token(TOKEN_ERROR, erro, linha, coluna);
+}
+\end{lstlisting}
+
+\section{Analisador Sintático}
+
+\subsection{Objetivo}
+O analisador sintático recebe os tokens do lexer e verifica se a sequência segue a gramática da linguagem. Como resultado, ele constrói uma \textbf{AST} (Árvore Sintática Abstrata).
+
+\subsection{Estratégia}
+A implementação usa descida recursiva (recursive descent): há uma função por não terminal, cada função consome tokens esperados e, em caso de incompatibilidade, registra erro com linha e coluna.
+
+\subsection{Estrutura de Parsing}
+\begin{enumerate}[label=\arabic*.]
+  \item O parser inicia com o primeiro token.
+  \item Chama a rotina de programa principal para ler \texttt{Statement*}.
+  \item Para cada statement, escolhe a produção com base no token atual.
+  \item Cria nós da AST para declarações, comandos, condições e blocos.
+  \item Finaliza ao encontrar \texttt{EOF}.
+\end{enumerate}
+
+\subsection{Tratamento de Expressões}
+As expressões aritméticas seguem precedência clássica:
+\begin{itemize}
+  \item \textbf{Factor}: número, identificador ou parênteses.
+  \item \textbf{Term}: multiplicação/divisão.
+  \item \textbf{Expression}: soma/subtração.
+\end{itemize}
+
+Essa separação evita ambiguidades e preserva precedência sem precisar de parser gerado automaticamente.
+
+\subsection{Comandos com Variações Sintáticas}
+Alguns comandos aceitam mais de uma forma:
+\begin{itemize}
+  \item \texttt{turn luz on;} e \texttt{turn luz off;}
+  \item atalhos: \texttt{ligar luz;} e \texttt{desligar luz;}
+\end{itemize}
+
+No parser, essas variações convergem para o mesmo tipo de nó de comando (ação de ligar/desligar).
+
+\subsection{Condições e Blocos}
+\begin{itemize}
+  \item \texttt{if} e \texttt{when} exigem condição válida + bloco \texttt{\{ ... \}}.
+  \item A condição segue o formato: identificador + operador + valor.
+  \item O valor pode ser número, identificador ou estado de sensor (\texttt{detected}/\texttt{not\_detected}).
+\end{itemize}
+
+\subsection{Erros Sintáticos}
+Quando o token atual não corresponde ao esperado, o parser:
+\begin{enumerate}[label=\arabic*.]
+  \item registra mensagem de erro;
+  \item inclui posição (linha/coluna);
+  \item interrompe a compilação para evitar gerar AST inválida.
+\end{enumerate}
+
+\subsection{Código do Analisador Sintático (sem comentários)}
+\begin{lstlisting}[language=C,basicstyle=\ttfamily\scriptsize,frame=single,breaklines=true,numbers=left,numberstyle=\tiny]
+static void parser_avancar(Parser *parser) {
+    parser->token_atual = lexer_proximo_token(parser->lexer);
+}
+
+static int parser_verificar(Parser *parser, TokenType tipo) {
+    return parser->token_atual.tipo == tipo;
+}
+
+static int parser_consumir(Parser *parser, TokenType tipo, const char *mensagem_erro) {
+    if (parser->token_atual.tipo == tipo) {
+        parser_avancar(parser);
+        return 1;
+    }
+    parser_registrar_erro(parser, mensagem_erro);
+    return 0;
+}
+
+static ASTNode* parser_turn_cmd(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_TURN_CMD);
+    if (parser_verificar(parser, TOKEN_LIGAR)) {
+        no->estado = STATE_ON;
+        parser_avancar(parser);
+        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'ligar'"); ast_destruir(no); return NULL; }
+        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+        parser_avancar(parser);
+    } else if (parser_verificar(parser, TOKEN_DESLIGAR)) {
+        no->estado = STATE_OFF;
+        parser_avancar(parser);
+        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'desligar'"); ast_destruir(no); return NULL; }
+        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+        parser_avancar(parser);
+    } else {
+        parser_avancar(parser);
+        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'turn'"); ast_destruir(no); return NULL; }
+        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+        parser_avancar(parser);
+        if (parser_verificar(parser, TOKEN_ON)) no->estado = STATE_ON;
+        else if (parser_verificar(parser, TOKEN_OFF)) no->estado = STATE_OFF;
+        else { parser_registrar_erro(parser, "'on' ou 'off' esperado"); ast_destruir(no); return NULL; }
+        parser_avancar(parser);
+    }
+    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após comando turn")) { ast_destruir(no); return NULL; }
+    return no;
+}
+
+ASTNode* parser_analisar(Parser *parser) {
+    ASTNode *programa = ast_criar_no(NODE_PROGRAM);
+    if (programa) { programa->linha = 1; programa->coluna = 1; }
+    while (!parser_verificar(parser, TOKEN_EOF) && !parser->erro) {
+        ASTNode *stmt = parser_statement(parser);
+        if (stmt) ast_adicionar_filho(programa, stmt);
+    }
+    return programa;
+}
+\end{lstlisting}
+
+\section{Conclusão}
+A especificação da HomeScript combina simplicidade de escrita com estrutura formal de compilador:
+\begin{itemize}
+  \item o \textbf{lexer} transforma caracteres em tokens com informação de contexto;
+  \item o \textbf{parser} valida a sintaxe e constrói a AST;
+  \item a linguagem oferece comandos de automação claros e de fácil leitura.
+\end{itemize}
+
+Com isso, o projeto atende aos requisitos de um compilador educacional completo para a etapa de análise léxico-sintática.
+
+\end{document}
