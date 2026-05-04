@@ -80,8 +80,8 @@ function configurarHomeScript(monaco) {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
-        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|when|detected|not_detected)\b/, 'keyword'],
-        [/\b(dispositivo|pino|ligar|desligar|esperar|se|quando|detectado|nao_detectado)\b/, 'keyword'],
+        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
+        [/\b(dispositivo|pino|ligar|desligar|esperar|se|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
         [/\bA[0-9]+\b/, 'number'],
         [/\b[0-9]+\b/, 'number'],
         [/[{}()[\]]/, '@brackets'],
@@ -144,8 +144,18 @@ function configurarHomeScript(monaco) {
         { label: 'device', insertText: 'device ${1:nome} pin ${2:13};', detail: 'Declarar dispositivo', kind: k.Keyword, insertTextRules: snippet },
         { label: 'dispositivo', insertText: 'dispositivo ${1:nome} pino ${2:13};', detail: 'Declarar dispositivo (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
         { label: 'sensor', insertText: 'sensor ${1:nome} pin ${2:A0};', detail: 'Declarar sensor', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'sensor dht11', insertText: 'sensor ${1:temperatura} type dht11 pin ${2:2};', detail: 'Sensor DHT11', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor hcsr04', insertText: 'sensor ${1:distancia} type hcsr04 trig ${2:8} echo ${3:9};', detail: 'Sensor HC-SR04', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor dht11 (PT-BR)', insertText: 'sensor ${1:temperatura} tipo dht11 pino ${2:2};', detail: 'Sensor DHT11 (PT-BR)', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor hcsr04 (PT-BR)', insertText: 'sensor ${1:distancia} tipo hcsr04 gatilho ${2:8} eco ${3:9};', detail: 'Sensor HC-SR04 (PT-BR)', kind: k.Snippet, insertTextRules: snippet },
         { label: 'pin', insertText: 'pin', detail: 'Palavra-chave de pino (EN)', kind: k.Keyword },
         { label: 'pino', insertText: 'pino', detail: 'Palavra-chave de pino (PT-BR)', kind: k.Keyword },
+        { label: 'type', insertText: 'type', detail: 'Tipo do sensor (EN)', kind: k.Keyword },
+        { label: 'tipo', insertText: 'tipo', detail: 'Tipo do sensor (PT-BR)', kind: k.Keyword },
+        { label: 'trig', insertText: 'trig', detail: 'Pino trigger do HC-SR04 (EN)', kind: k.Keyword },
+        { label: 'gatilho', insertText: 'gatilho', detail: 'Pino trigger do HC-SR04 (PT-BR)', kind: k.Keyword },
+        { label: 'echo', insertText: 'echo', detail: 'Pino echo do HC-SR04 (EN)', kind: k.Keyword },
+        { label: 'eco', insertText: 'eco', detail: 'Pino echo do HC-SR04 (PT-BR)', kind: k.Keyword },
         { label: 'let', insertText: 'let ${1:variavel} = ${2:0};', detail: 'Declarar variável', kind: k.Keyword, insertTextRules: snippet },
         { label: 'turn on', insertText: 'turn ${1:dispositivo} on;', detail: 'Ligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'turn off', insertText: 'turn ${1:dispositivo} off;', detail: 'Desligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
@@ -695,14 +705,38 @@ function ExecutionTraceView({ codigo, resultado }) {
 
 /* ===== Componente: VisualBuilder ===== */
 function VisualBuilder({ onGenerate }) {
-  const [devices, setDevices] = useState([{ nome: '', pino: '', tipo: 'device' }])
+  const [devices, setDevices] = useState([{
+    nome: '',
+    pino: '',
+    tipo: 'device',
+    sensorTipo: 'generic',
+    trig: '',
+    echo: ''
+  }])
   const [regras, setRegras] = useState([{ gatilho: '', operador: '==', valor: 'detected', acao: '', estado: 'on', wait: '' }])
 
-  const addDevice = () => setDevices([...devices, { nome: '', pino: '', tipo: 'device' }])
+  const addDevice = () => setDevices([...devices, {
+    nome: '',
+    pino: '',
+    tipo: 'device',
+    sensorTipo: 'generic',
+    trig: '',
+    echo: ''
+  }])
   const removeDevice = (i) => setDevices(devices.filter((_, idx) => idx !== i))
   const updateDevice = (i, field, val) => {
     const updated = [...devices]
-    updated[i] = { ...updated[i], [field]: val }
+    const current = { ...updated[i], [field]: val }
+    if (field === 'tipo' && val === 'device') {
+      current.sensorTipo = 'generic'
+      current.trig = ''
+      current.echo = ''
+    }
+    if (field === 'sensorTipo' && val !== 'hcsr04') {
+      current.trig = ''
+      current.echo = ''
+    }
+    updated[i] = current
     setDevices(updated)
   }
 
@@ -710,7 +744,28 @@ function VisualBuilder({ onGenerate }) {
   const removeRegra = (i) => setRegras(regras.filter((_, idx) => idx !== i))
   const updateRegra = (i, field, val) => {
     const updated = [...regras]
-    updated[i] = { ...updated[i], [field]: val }
+    const current = { ...updated[i], [field]: val }
+
+    if (field === 'gatilho') {
+      const sensor = devices.find((d) => d.tipo === 'sensor' && d.nome === val)
+      if (sensor) {
+        if (sensor.sensorTipo === 'dht11' || sensor.sensorTipo === 'hcsr04') {
+          current.operador = current.operador === '==' || current.operador === '!=' ? '>' : current.operador
+          current.valor = sensor.sensorTipo === 'dht11' ? '30' : '20'
+        } else {
+          current.operador = '=='
+          current.valor = 'detected'
+        }
+      }
+    }
+
+    if (field === 'operador' && (val === '>' || val === '<' || val === '>=' || val === '<=')) {
+      if (current.valor === 'detected' || current.valor === 'not_detected') {
+        current.valor = '20'
+      }
+    }
+
+    updated[i] = current
     setRegras(updated)
   }
 
@@ -718,8 +773,16 @@ function VisualBuilder({ onGenerate }) {
     let code = '// Código gerado pelo HomeScript Visual Builder\n'
 
     devices.forEach(d => {
-      if (d.nome && d.pino) {
+      if (d.tipo === 'device' && d.nome && d.pino) {
         code += `${d.tipo} ${d.nome} pin ${d.pino};\n`
+      } else if (d.tipo === 'sensor' && d.nome) {
+        if (d.sensorTipo === 'hcsr04' && d.trig && d.echo) {
+          code += `sensor ${d.nome} type hcsr04 trig ${d.trig} echo ${d.echo};\n`
+        } else if (d.sensorTipo === 'dht11' && d.pino) {
+          code += `sensor ${d.nome} type dht11 pin ${d.pino};\n`
+        } else if (d.sensorTipo === 'generic' && d.pino) {
+          code += `sensor ${d.nome} pin ${d.pino};\n`
+        }
       }
     })
 
@@ -740,6 +803,7 @@ function VisualBuilder({ onGenerate }) {
   }
 
   const sensorNames = devices.filter(d => d.tipo === 'sensor' && d.nome).map(d => d.nome)
+  const sensorByName = Object.fromEntries(devices.filter(d => d.tipo === 'sensor' && d.nome).map(d => [d.nome, d]))
   const deviceNames = devices.filter(d => d.tipo === 'device' && d.nome).map(d => d.nome)
 
   return (
@@ -755,15 +819,49 @@ function VisualBuilder({ onGenerate }) {
             </select>
             <input className="builder-input" placeholder="Nome (ex: luz)" value={d.nome}
               onChange={e => updateDevice(i, 'nome', e.target.value)} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
-            <input className="builder-input" placeholder="Pino (ex: 13)" value={d.pino}
-              onChange={e => updateDevice(i, 'pino', e.target.value)} style={{ width: 100 }} />
+            {d.tipo === 'device' && (
+              <>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
+                <input className="builder-input" placeholder="Pino (ex: 13)" value={d.pino}
+                  onChange={e => updateDevice(i, 'pino', e.target.value)} style={{ width: 120 }} />
+              </>
+            )}
+            {d.tipo === 'sensor' && (
+              <>
+                <select
+                  className="builder-select"
+                  value={d.sensorTipo}
+                  onChange={e => updateDevice(i, 'sensorTipo', e.target.value)}
+                >
+                  <option value="generic">Sensor Digital/Analógico</option>
+                  <option value="dht11">DHT11 (temperatura)</option>
+                  <option value="hcsr04">HC-SR04 (distância)</option>
+                </select>
+                {d.sensorTipo !== 'hcsr04' && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
+                    <input className="builder-input" placeholder="Pino (ex: 2 ou A0)" value={d.pino}
+                      onChange={e => updateDevice(i, 'pino', e.target.value)} style={{ width: 120 }} />
+                  </>
+                )}
+                {d.sensorTipo === 'hcsr04' && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>trig</span>
+                    <input className="builder-input" placeholder="Trig (ex: 8)" value={d.trig}
+                      onChange={e => updateDevice(i, 'trig', e.target.value)} style={{ width: 90 }} />
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>echo</span>
+                    <input className="builder-input" placeholder="Echo (ex: 9)" value={d.echo}
+                      onChange={e => updateDevice(i, 'echo', e.target.value)} style={{ width: 90 }} />
+                  </>
+                )}
+              </>
+            )}
             {devices.length > 1 && (
               <button className="rule-remove" onClick={() => removeDevice(i)}>✕</button>
             )}
           </div>
         ))}
-        <button className="add-btn" onClick={addDevice}>+ Adicionar dispositivo</button>
+        <button className="add-btn" onClick={addDevice}>+ Adicionar dispositivo/sensor</button>
       </div>
 
       {/* Regras */}
@@ -781,8 +879,13 @@ function VisualBuilder({ onGenerate }) {
               <option value="!=">!=</option>
               <option value=">">&gt;</option>
               <option value="<">&lt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<=">&lt;=</option>
             </select>
-            <input className="builder-input" placeholder="Valor" value={r.valor}
+            <input
+              className="builder-input"
+              placeholder={sensorByName[r.gatilho]?.sensorTipo === 'generic' ? 'detected/not_detected ou número' : 'Valor numérico'}
+              value={r.valor}
               onChange={e => updateRegra(i, 'valor', e.target.value)} style={{ width: 120 }} />
             <span style={{ color: 'var(--accent-green)', fontWeight: 600, fontSize: 13 }}>→</span>
             <select className="builder-select" value={r.acao} onChange={e => updateRegra(i, 'acao', e.target.value)}>
@@ -801,6 +904,9 @@ function VisualBuilder({ onGenerate }) {
           </div>
         ))}
         <button className="add-btn" onClick={addRegra}>+ Adicionar regra</button>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
+          Dica: sensores DHT11 e HC-SR04 usam comparação numérica (ex.: &gt; 30 ou &lt; 20).
+        </div>
       </div>
 
       {/* Gerar */}

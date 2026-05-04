@@ -150,6 +150,12 @@ static void ast_json(ASTNode *no, int nivel) {
 
     if (no->nome[0]) printf(",\n%s    \"nome\": \"%s\"", indent, no->nome);
     if (no->pino[0]) printf(",\n%s    \"pino\": \"%s\"", indent, no->pino);
+    if (no->tipo == NODE_SENSOR_DECL && no->sensor_tipo[0]) {
+        printf(",\n%s    \"sensor_tipo\": \"%s\"", indent, no->sensor_tipo);
+    }
+    if (no->tipo == NODE_SENSOR_DECL && no->pino_secundario[0]) {
+        printf(",\n%s    \"pino_secundario\": \"%s\"", indent, no->pino_secundario);
+    }
     if (no->tipo == NODE_CONDITION) {
         printf(",\n%s    \"operador\": \"%s\"", indent, ast_operador_simbolo(no->operador));
         printf(",\n%s    \"valor\": \"%s\"", indent, no->valor_comparacao);

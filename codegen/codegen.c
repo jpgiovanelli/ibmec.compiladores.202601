@@ -3,15 +3,6 @@
  * Implementação
  *
  * Converte uma AST HomeScript em código C/Arduino.
- *
- * Mapeamento:
- *   device X pin N  → #define X N  +  pinMode(X, OUTPUT)
- *   sensor X pin N  → int X_pin = N  +  pinMode(X_pin, INPUT)
- *   turn X on       → digitalWrite(X, HIGH)
- *   turn X off      → digitalWrite(X, LOW)
- *   wait N          → delay(N)
- *   if cond { }     → if (cond) { }
- *   when cond { }   → if (cond) { }  (dentro do loop)
  */
 
 #include <stdio.h>
@@ -20,9 +11,6 @@
 #include <stdarg.h>
 #include "codegen.h"
 
-/* ---------- Funções Auxiliares ---------- */
-
-/* Escreve texto no buffer de código */
 static void codegen_escrever(CodeGenerator *gen, const char *texto) {
     int len = strlen(texto);
     if (gen->posicao + len < MAX_CODE_LEN - 1) {
@@ -31,7 +19,6 @@ static void codegen_escrever(CodeGenerator *gen, const char *texto) {
     }
 }
 
-/* Escreve com formatação (similar a sprintf) */
 static void codegen_escrever_fmt(CodeGenerator *gen, const char *fmt, ...) {
     char buffer[1024];
     va_list args;
@@ -41,7 +28,6 @@ static void codegen_escrever_fmt(CodeGenerator *gen, const char *fmt, ...) {
     codegen_escrever(gen, buffer);
 }
 
-/* Escreve indentação */
 static void codegen_indentar(CodeGenerator *gen) {
     int i;
     for (i = 0; i < gen->nivel_indentacao; i++) {
@@ -49,31 +35,76 @@ static void codegen_indentar(CodeGenerator *gen) {
     }
 }
 
-/* Verifica se o pino é analógico */
 static int eh_pino_analogico(const char *pino) {
     return pino[0] == 'A' && pino[1] >= '0' && pino[1] <= '9';
 }
 
-/* Verifica se um nome pertence a sensor declarado */
-static int nome_eh_sensor(CodeGenerator *gen, const char *nome) {
+static int sensor_index(CodeGenerator *gen, const char *nome) {
     int i;
     for (i = 0; i < gen->num_sensores; i++) {
-        if (strcmp(gen->sensores[i], nome) == 0) {
-            return 1;
-        }
+        if (strcmp(gen->sensores[i], nome) == 0) return i;
+    }
+    return -1;
+}
+
+static int usa_tipo_sensor(CodeGenerator *gen, const char *tipo) {
+    int i;
+    for (i = 0; i < gen->num_sensores; i++) {
+        if (strcmp(gen->sensores_tipo[i], tipo) == 0) return 1;
     }
     return 0;
 }
 
-/* ---------- Geração por Tipo de Nó ---------- */
+static void sensor_guardar(CodeGenerator *gen, ASTNode *no) {
+    int idx;
+    if (gen->num_sensores >= 64) return;
 
-/* Coleta declarações de device e sensor */
+    idx = gen->num_sensores++;
+    strncpy(gen->sensores[idx], no->nome, MAX_NAME_LEN - 1);
+    gen->sensores[idx][MAX_NAME_LEN - 1] = '\0';
+
+    strncpy(gen->sensores_tipo[idx], no->sensor_tipo, MAX_NAME_LEN - 1);
+    gen->sensores_tipo[idx][MAX_NAME_LEN - 1] = '\0';
+
+    strncpy(gen->sensores_pin1[idx], no->pino, MAX_NAME_LEN - 1);
+    gen->sensores_pin1[idx][MAX_NAME_LEN - 1] = '\0';
+
+    strncpy(gen->sensores_pin2[idx], no->pino_secundario, MAX_NAME_LEN - 1);
+    gen->sensores_pin2[idx][MAX_NAME_LEN - 1] = '\0';
+}
+
+static void codegen_coletar_sensores(ASTNode *programa, CodeGenerator *gen) {
+    int i;
+    for (i = 0; i < programa->num_filhos; i++) {
+        ASTNode *no = programa->filhos[i];
+        if (no->tipo == NODE_SENSOR_DECL) {
+            sensor_guardar(gen, no);
+        }
+    }
+}
+
+static void codegen_funcoes_hcsr04(CodeGenerator *gen) {
+    int i;
+    for (i = 0; i < gen->num_sensores; i++) {
+        if (strcmp(gen->sensores_tipo[i], "hcsr04") == 0) {
+            codegen_escrever_fmt(gen, "long read_%s_cm() {\n", gen->sensores[i]);
+            codegen_escrever_fmt(gen, "    digitalWrite(%s_trig_pin, LOW);\n", gen->sensores[i]);
+            codegen_escrever(gen, "    delayMicroseconds(2);\n");
+            codegen_escrever_fmt(gen, "    digitalWrite(%s_trig_pin, HIGH);\n", gen->sensores[i]);
+            codegen_escrever(gen, "    delayMicroseconds(10);\n");
+            codegen_escrever_fmt(gen, "    digitalWrite(%s_trig_pin, LOW);\n", gen->sensores[i]);
+            codegen_escrever_fmt(gen, "    long duration = pulseIn(%s_echo_pin, HIGH, 30000);\n", gen->sensores[i]);
+            codegen_escrever(gen, "    return duration / 58;\n");
+            codegen_escrever(gen, "}\n\n");
+        }
+    }
+}
+
 static void codegen_declaracoes(CodeGenerator *gen, ASTNode *programa) {
     int i;
     int tem_device = 0;
     int tem_sensor = 0;
 
-    /* Defines para dispositivos */
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
         if (no->tipo == NODE_DEVICE_DECL) {
@@ -84,17 +115,14 @@ static void codegen_declaracoes(CodeGenerator *gen, ASTNode *programa) {
 
     if (tem_device) codegen_escrever(gen, "\n");
 
-    /* Variáveis para sensores */
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
         if (no->tipo == NODE_SENSOR_DECL) {
-            if (gen->num_sensores < 64) {
-                strncpy(gen->sensores[gen->num_sensores], no->nome, MAX_NAME_LEN - 1);
-                gen->sensores[gen->num_sensores][MAX_NAME_LEN - 1] = '\0';
-                gen->num_sensores++;
-            }
-            if (eh_pino_analogico(no->pino)) {
-                codegen_escrever_fmt(gen, "int %s_pin = %s;\n", no->nome, no->pino);
+            if (strcmp(no->sensor_tipo, "dht11") == 0) {
+                codegen_escrever_fmt(gen, "DHT %s_dht(%s, DHT11);\n", no->nome, no->pino);
+            } else if (strcmp(no->sensor_tipo, "hcsr04") == 0) {
+                codegen_escrever_fmt(gen, "int %s_trig_pin = %s;\n", no->nome, no->pino);
+                codegen_escrever_fmt(gen, "int %s_echo_pin = %s;\n", no->nome, no->pino_secundario);
             } else {
                 codegen_escrever_fmt(gen, "int %s_pin = %s;\n", no->nome, no->pino);
             }
@@ -108,14 +136,12 @@ static void codegen_declaracoes(CodeGenerator *gen, ASTNode *programa) {
     if (tem_sensor) codegen_escrever(gen, "\n");
 }
 
-/* Gera a função setup() */
 static void codegen_setup(CodeGenerator *gen, ASTNode *programa) {
     int i;
 
     codegen_escrever(gen, "void setup() {\n");
     gen->nivel_indentacao = 1;
 
-    /* pinMode para dispositivos */
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
         if (no->tipo == NODE_DEVICE_DECL) {
@@ -124,10 +150,21 @@ static void codegen_setup(CodeGenerator *gen, ASTNode *programa) {
         }
     }
 
-    /* pinMode para sensores */
     for (i = 0; i < programa->num_filhos; i++) {
         ASTNode *no = programa->filhos[i];
-        if (no->tipo == NODE_SENSOR_DECL) {
+        if (no->tipo != NODE_SENSOR_DECL) continue;
+
+        if (strcmp(no->sensor_tipo, "dht11") == 0) {
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "%s_dht.begin();\n", no->nome);
+        } else if (strcmp(no->sensor_tipo, "hcsr04") == 0) {
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "pinMode(%s_trig_pin, OUTPUT);\n", no->nome);
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "pinMode(%s_echo_pin, INPUT);\n", no->nome);
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "digitalWrite(%s_trig_pin, LOW);\n", no->nome);
+        } else {
             codegen_indentar(gen);
             codegen_escrever_fmt(gen, "pinMode(%s_pin, INPUT);\n", no->nome);
         }
@@ -140,7 +177,6 @@ static void codegen_setup(CodeGenerator *gen, ASTNode *programa) {
     codegen_escrever(gen, "}\n\n");
 }
 
-/* Gera um comando de forma recursiva */
 static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
     int i;
 
@@ -176,22 +212,41 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
 
         case NODE_IF_STMT:
         case NODE_WHEN_STMT: {
-            ASTNode *cond = no->filhos[0]; /* condição */
-            ASTNode *bloco = no->filhos[1]; /* bloco */
+            ASTNode *cond = no->filhos[0];
+            ASTNode *bloco = no->filhos[1];
+            int idx = sensor_index(gen, cond->nome);
+            int detected = strcmp(cond->valor_comparacao, "detected") == 0 || strcmp(cond->valor_comparacao, "detectado") == 0;
+            int not_detected = strcmp(cond->valor_comparacao, "not_detected") == 0 || strcmp(cond->valor_comparacao, "nao_detectado") == 0;
 
             codegen_indentar(gen);
 
-            /* Leitura do sensor */
-            if (strcmp(cond->valor_comparacao, "detected") == 0 ||
-                strcmp(cond->valor_comparacao, "detectado") == 0) {
-                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == HIGH) {\n",
-                                    cond->nome);
-            } else if (strcmp(cond->valor_comparacao, "not_detected") == 0 ||
-                       strcmp(cond->valor_comparacao, "nao_detectado") == 0) {
-                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == LOW) {\n",
-                                    cond->nome);
-            } else if (nome_eh_sensor(gen, cond->nome)) {
+            if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "hcsr04") == 0) {
+                if (detected) {
+                    codegen_escrever_fmt(gen, "if (read_%s_cm() > 0) {\n", cond->nome);
+                } else if (not_detected) {
+                    codegen_escrever_fmt(gen, "if (read_%s_cm() == 0) {\n", cond->nome);
+                } else {
+                    codegen_escrever_fmt(gen, "if (read_%s_cm() %s %s) {\n",
+                                        cond->nome,
+                                        ast_operador_simbolo(cond->operador),
+                                        cond->valor_comparacao);
+                }
+            } else if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "dht11") == 0) {
+                codegen_escrever_fmt(gen, "if (%s_dht.readTemperature() %s %s) {\n",
+                                    cond->nome,
+                                    ast_operador_simbolo(cond->operador),
+                                    cond->valor_comparacao);
+            } else if (detected) {
+                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == HIGH) {\n", cond->nome);
+            } else if (not_detected) {
+                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == LOW) {\n", cond->nome);
+            } else if (idx >= 0 && eh_pino_analogico(gen->sensores_pin1[idx])) {
                 codegen_escrever_fmt(gen, "if (analogRead(%s_pin) %s %s) {\n",
+                                    cond->nome,
+                                    ast_operador_simbolo(cond->operador),
+                                    cond->valor_comparacao);
+            } else if (idx >= 0) {
+                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) %s %s) {\n",
                                     cond->nome,
                                     ast_operador_simbolo(cond->operador),
                                     cond->valor_comparacao);
@@ -224,7 +279,6 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
     }
 }
 
-/* Gera a função loop() */
 static void codegen_loop(CodeGenerator *gen, ASTNode *programa) {
     int i;
 
@@ -243,8 +297,6 @@ static void codegen_loop(CodeGenerator *gen, ASTNode *programa) {
     gen->nivel_indentacao = 0;
     codegen_escrever(gen, "}\n");
 }
-
-/* ---------- Funções Públicas ---------- */
 
 CodeGenerator* codegen_criar(void) {
     CodeGenerator *gen = (CodeGenerator*)malloc(sizeof(CodeGenerator));
@@ -268,20 +320,25 @@ void codegen_destruir(CodeGenerator *gen) {
 void codegen_gerar(CodeGenerator *gen, ASTNode *ast) {
     if (!gen || !ast) return;
 
-    /* Cabeçalho */
+    codegen_coletar_sensores(ast, gen);
+
     codegen_escrever(gen, "/*\n");
     codegen_escrever(gen, " * Código gerado automaticamente pelo compilador HomeScript\n");
     codegen_escrever(gen, " * Plataforma: Arduino/ESP32\n");
     codegen_escrever(gen, " */\n\n");
-    codegen_escrever(gen, "#include <Arduino.h>\n\n");
+    codegen_escrever(gen, "#include <Arduino.h>\n");
+    if (usa_tipo_sensor(gen, "dht11")) {
+        codegen_escrever(gen, "#include <DHT.h>\n");
+    }
+    codegen_escrever(gen, "\n");
 
-    /* Declarações (defines e variáveis) */
     codegen_declaracoes(gen, ast);
 
-    /* Função setup() */
-    codegen_setup(gen, ast);
+    if (usa_tipo_sensor(gen, "hcsr04")) {
+        codegen_funcoes_hcsr04(gen);
+    }
 
-    /* Função loop() */
+    codegen_setup(gen, ast);
     codegen_loop(gen, ast);
 }
 

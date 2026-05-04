@@ -31,6 +31,11 @@ static int parser_verificar(Parser *parser, TokenType tipo) {
     return parser->token_atual.tipo == tipo;
 }
 
+static int parser_ident_igual(Parser *parser, const char *texto) {
+    return parser->token_atual.tipo == TOKEN_IDENTIFIER &&
+           strcmp(parser->token_atual.valor, texto) == 0;
+}
+
 static int parser_consumir(Parser *parser, TokenType tipo, const char *mensagem_erro) {
     if (parser->token_atual.tipo == tipo) {
         parser_avancar(parser);
@@ -207,19 +212,76 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
     strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
     parser_avancar(parser);
 
-    if (!parser_consumir(parser, TOKEN_PIN, "Palavra 'pin' esperada")) {
-        ast_destruir(no);
-        return NULL;
-    }
+    if (parser_verificar(parser, TOKEN_PIN)) {
+        parser_avancar(parser);
 
-    if (parser_verificar(parser, TOKEN_NUMBER)) {
-        strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+        if (parser_verificar(parser, TOKEN_NUMBER) || parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+            strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+        } else {
+            parser_registrar_erro(parser, "Número do pino esperado");
+            ast_destruir(no);
+            return NULL;
+        }
+    } else if (parser_ident_igual(parser, "type") || parser_ident_igual(parser, "tipo")) {
         parser_avancar(parser);
-    } else if (parser_verificar(parser, TOKEN_ANALOG_PIN)) {
-        strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+
+        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
+            parser_registrar_erro(parser, "Tipo de sensor esperado após 'type'");
+            ast_destruir(no);
+            return NULL;
+        }
+        strncpy(no->sensor_tipo, parser->token_atual.valor, MAX_NAME_LEN - 1);
         parser_avancar(parser);
+
+        if (strcmp(no->sensor_tipo, "dht11") == 0) {
+            if (!parser_consumir(parser, TOKEN_PIN, "Palavra 'pin' esperada para sensor dht11")) {
+                ast_destruir(no);
+                return NULL;
+            }
+            if (parser_verificar(parser, TOKEN_NUMBER)) {
+                strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+                parser_avancar(parser);
+            } else {
+                parser_registrar_erro(parser, "Pino digital esperado para sensor dht11");
+                ast_destruir(no);
+                return NULL;
+            }
+        } else if (strcmp(no->sensor_tipo, "hcsr04") == 0) {
+            if (!parser_ident_igual(parser, "trig") && !parser_ident_igual(parser, "gatilho")) {
+                parser_registrar_erro(parser, "Palavra 'trig'/'gatilho' esperada para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            parser_avancar(parser);
+            if (!parser_verificar(parser, TOKEN_NUMBER)) {
+                parser_registrar_erro(parser, "Pino trig (digital) esperado para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+
+            if (!parser_ident_igual(parser, "echo") && !parser_ident_igual(parser, "eco")) {
+                parser_registrar_erro(parser, "Palavra 'echo'/'eco' esperada para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            parser_avancar(parser);
+            if (!parser_verificar(parser, TOKEN_NUMBER)) {
+                parser_registrar_erro(parser, "Pino echo (digital) esperado para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            strncpy(no->pino_secundario, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+        } else {
+            parser_registrar_erro(parser, "Tipo de sensor desconhecido (suportados: dht11, hcsr04)");
+            ast_destruir(no);
+            return NULL;
+        }
     } else {
-        parser_registrar_erro(parser, "Número do pino esperado");
+        parser_registrar_erro(parser, "Declaração de sensor inválida: esperado 'pin' ou 'type'");
         ast_destruir(no);
         return NULL;
     }

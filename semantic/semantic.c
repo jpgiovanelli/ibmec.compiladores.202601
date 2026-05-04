@@ -17,7 +17,9 @@ typedef enum {
 typedef struct {
     char nome[MAX_NAME_LEN];
     SymbolKind tipo;
+    char sensor_tipo[MAX_NAME_LEN];
     char pino[MAX_NAME_LEN];
+    char pino2[MAX_NAME_LEN];
     int linha;
     int coluna;
 } Symbol;
@@ -69,7 +71,7 @@ static int eh_palavra_condicional(const char *text) {
            strcmp(text, "nao_detectado") == 0;
 }
 
-static int symbol_add(SemanticContext *ctx, const char *nome, SymbolKind tipo, const char *pino, int linha, int coluna) {
+static int symbol_add(SemanticContext *ctx, const char *nome, SymbolKind tipo, const char *sensor_tipo, const char *pino, const char *pino2, int linha, int coluna) {
     Symbol *dest;
 
     if (ctx->num_symbols >= MAX_SYMBOLS) {
@@ -81,6 +83,12 @@ static int symbol_add(SemanticContext *ctx, const char *nome, SymbolKind tipo, c
     strncpy(dest->nome, nome, MAX_NAME_LEN - 1);
     dest->nome[MAX_NAME_LEN - 1] = '\0';
     dest->tipo = tipo;
+    if (sensor_tipo) {
+        strncpy(dest->sensor_tipo, sensor_tipo, MAX_NAME_LEN - 1);
+        dest->sensor_tipo[MAX_NAME_LEN - 1] = '\0';
+    } else {
+        dest->sensor_tipo[0] = '\0';
+    }
     dest->linha = linha;
     dest->coluna = coluna;
 
@@ -89,6 +97,12 @@ static int symbol_add(SemanticContext *ctx, const char *nome, SymbolKind tipo, c
         dest->pino[MAX_NAME_LEN - 1] = '\0';
     } else {
         dest->pino[0] = '\0';
+    }
+    if (pino2) {
+        strncpy(dest->pino2, pino2, MAX_NAME_LEN - 1);
+        dest->pino2[MAX_NAME_LEN - 1] = '\0';
+    } else {
+        dest->pino2[0] = '\0';
     }
 
     return 1;
@@ -189,6 +203,8 @@ static void validar_expressao(SemanticContext *ctx, ASTNode *no, const char *exp
 static void coletar_declaracoes_fixas(SemanticContext *ctx, ASTNode *no) {
     int i;
     Symbol *existente;
+    const char *pins[2];
+    int num_pins = 1;
 
     if (!no) return;
 
@@ -206,22 +222,49 @@ static void coletar_declaracoes_fixas(SemanticContext *ctx, ASTNode *no) {
                 existente->linha
             );
         } else {
+            pins[0] = no->pino;
+            pins[1] = no->pino_secundario;
+            if (no->tipo == NODE_SENSOR_DECL && no->pino_secundario[0]) {
+                num_pins = 2;
+            } else {
+                num_pins = 1;
+            }
+
             for (i = 0; i < ctx->num_symbols; i++) {
-                if ((ctx->symbols[i].tipo == SYMBOL_DEVICE || ctx->symbols[i].tipo == SYMBOL_SENSOR) &&
-                    strcmp(ctx->symbols[i].pino, no->pino) == 0) {
-                    semantic_registrar_erro(
-                        ctx,
-                        no->linha,
-                        no->coluna,
-                        "Pino '%s' ja esta em uso por '%s' (linha %d)",
-                        no->pino,
-                        ctx->symbols[i].nome,
-                        ctx->symbols[i].linha
-                    );
+                int p;
+                for (p = 0; p < num_pins; p++) {
+                    if ((ctx->symbols[i].tipo == SYMBOL_DEVICE || ctx->symbols[i].tipo == SYMBOL_SENSOR) &&
+                        ((ctx->symbols[i].pino[0] && strcmp(ctx->symbols[i].pino, pins[p]) == 0) ||
+                         (ctx->symbols[i].pino2[0] && strcmp(ctx->symbols[i].pino2, pins[p]) == 0))) {
+                        semantic_registrar_erro(
+                            ctx,
+                            no->linha,
+                            no->coluna,
+                            "Pino '%s' ja esta em uso por '%s' (linha %d)",
+                            pins[p],
+                            ctx->symbols[i].nome,
+                            ctx->symbols[i].linha
+                        );
+                        break;
+                    }
+                }
+                if (ctx->resultado->num_erros > 0 &&
+                    ctx->resultado->erros[ctx->resultado->num_erros - 1].linha == no->linha &&
+                    ctx->resultado->erros[ctx->resultado->num_erros - 1].coluna == no->coluna) {
                     break;
                 }
             }
-            symbol_add(ctx, no->nome, tipo, no->pino, no->linha, no->coluna);
+            if (no->tipo == NODE_SENSOR_DECL && strcmp(no->sensor_tipo, "hcsr04") == 0 &&
+                strcmp(no->pino, no->pino_secundario) == 0) {
+                semantic_registrar_erro(
+                    ctx,
+                    no->linha,
+                    no->coluna,
+                    "Sensor hcsr04 '%s' nao pode usar o mesmo pino para trig e echo",
+                    no->nome
+                );
+            }
+            symbol_add(ctx, no->nome, tipo, no->sensor_tipo, no->pino, no->pino_secundario, no->linha, no->coluna);
         }
     }
 
@@ -275,7 +318,7 @@ static void analisar_no(SemanticContext *ctx, ASTNode *no) {
             }
 
             validar_expressao(ctx, no, no->expressao);
-            symbol_add(ctx, no->nome, SYMBOL_VAR, NULL, no->linha, no->coluna);
+            symbol_add(ctx, no->nome, SYMBOL_VAR, NULL, NULL, NULL, no->linha, no->coluna);
             break;
 
         case NODE_ASSIGN_CMD:
@@ -324,13 +367,29 @@ static void analisar_no(SemanticContext *ctx, ASTNode *no) {
         case NODE_WHEN_STMT:
             if (no->num_filhos >= 1 && no->filhos[0] && no->filhos[0]->tipo == NODE_CONDITION) {
                 ASTNode *cond = no->filhos[0];
+                Symbol *sensor_symbol = symbol_find_kind(ctx, cond->nome, SYMBOL_SENSOR);
+                int valor_detectado = eh_palavra_condicional(cond->valor_comparacao);
+                int sensor_e_dht11 = 0;
 
-                if (!symbol_find_kind(ctx, cond->nome, SYMBOL_SENSOR)) {
+                if (!sensor_symbol) {
                     semantic_registrar_erro(
                         ctx,
                         cond->linha,
                         cond->coluna,
                         "Condicao usa sensor '%s' nao declarado",
+                        cond->nome
+                    );
+                }
+                if (sensor_symbol && strcmp(sensor_symbol->sensor_tipo, "dht11") == 0) {
+                    sensor_e_dht11 = 1;
+                }
+                if (sensor_e_dht11 && valor_detectado) {
+                    semantic_registrar_erro(
+                        ctx,
+                        cond->linha,
+                        cond->coluna,
+                        "Sensor dht11 '%s' deve ser usado com comparacao numerica (ex: if %s > 30)",
+                        cond->nome,
                         cond->nome
                     );
                 }

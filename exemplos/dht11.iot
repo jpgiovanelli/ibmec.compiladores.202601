@@ -1,0 +1,11 @@
+// Exemplo DHT11: liga ventilador em temperatura alta
+device ventilador pin 7;
+sensor temperatura type dht11 pin 2;
+
+if temperatura > 30 {
+    turn ventilador on;
+}
+
+if temperatura <= 27 {
+    turn ventilador off;
+}

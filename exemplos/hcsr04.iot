@@ -1,0 +1,11 @@
+// Exemplo HC-SR04: aciona buzzer se objeto estiver perto
+device buzzer pin 13;
+sensor distancia type hcsr04 trig 8 echo 9;
+
+if distancia < 20 {
+    turn buzzer on;
+}
+
+if distancia >= 20 {
+    turn buzzer off;
+}

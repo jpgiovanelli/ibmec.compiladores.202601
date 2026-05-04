@@ -53,6 +53,8 @@ typedef struct ASTNode {
     /* Dados específicos do nó */
     char nome[MAX_NAME_LEN];           /* nome do dispositivo/sensor */
     char pino[MAX_NAME_LEN];           /* número ou nome do pino */
+    char pino_secundario[MAX_NAME_LEN];/* pino extra (ex.: echo do HC-SR04) */
+    char sensor_tipo[MAX_NAME_LEN];    /* generic, dht11, hcsr04 */
     OperatorType operador;             /* operador da condição */
     char valor_comparacao[MAX_NAME_LEN]; /* valor comparado */
     DeviceState estado;                /* on ou off */
