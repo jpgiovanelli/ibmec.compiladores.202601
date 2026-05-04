@@ -1,0 +1,5 @@
+dispositivo luz pino 13;
+sensor sensorMovimento pin 14; 
+quando sensorMovimento == detectado {
+    ligar luz;
+}

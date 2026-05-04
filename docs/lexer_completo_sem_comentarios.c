@@ -3,10 +3,8 @@
 #include <string.h>
 #include <ctype.h>
 #include "lexer.h"
-
 static void lexer_avancar(Lexer *lexer) {
     if (lexer->eof) return;
-
     lexer->caractere_atual = fgetc(lexer->arquivo);
     if (lexer->caractere_atual == EOF) {
         lexer->eof = 1;
@@ -18,7 +16,6 @@ static void lexer_avancar(Lexer *lexer) {
         lexer->coluna++;
     }
 }
-
 static char lexer_espiar(Lexer *lexer) {
     if (lexer->eof) return '\0';
     char c = fgetc(lexer->arquivo);
@@ -26,7 +23,6 @@ static char lexer_espiar(Lexer *lexer) {
     ungetc(c, lexer->arquivo);
     return c;
 }
-
 static void lexer_pular_espacos(Lexer *lexer) {
     while (!lexer->eof && (lexer->caractere_atual == ' '  ||
                             lexer->caractere_atual == '\t' ||
@@ -35,7 +31,6 @@ static void lexer_pular_espacos(Lexer *lexer) {
         lexer_avancar(lexer);
     }
 }
-
 static void lexer_pular_comentario(Lexer *lexer) {
     if (lexer->caractere_atual == '/' && lexer_espiar(lexer) == '/') {
         while (!lexer->eof && lexer->caractere_atual != '\n') {
@@ -46,7 +41,6 @@ static void lexer_pular_comentario(Lexer *lexer) {
         }
     }
 }
-
 static void lexer_pular_insignificantes(Lexer *lexer) {
     while (!lexer->eof) {
         lexer_pular_espacos(lexer);
@@ -57,7 +51,6 @@ static void lexer_pular_insignificantes(Lexer *lexer) {
         }
     }
 }
-
 static Token criar_token(TokenType tipo, const char *valor, int linha, int coluna) {
     Token token;
     token.tipo = tipo;
@@ -67,9 +60,8 @@ static Token criar_token(TokenType tipo, const char *valor, int linha, int colun
     token.valor[MAX_TOKEN_LEN - 1] = '\0';
     return token;
 }
-
 static TokenType verificar_palavra_reservada(const char *palavra) {
-    /* Palavras em inglês */
+    
     if (strcmp(palavra, "device") == 0)        return TOKEN_DEVICE;
     if (strcmp(palavra, "sensor") == 0)        return TOKEN_SENSOR;
     if (strcmp(palavra, "pin") == 0)           return TOKEN_PIN;
@@ -83,7 +75,7 @@ static TokenType verificar_palavra_reservada(const char *palavra) {
     if (strcmp(palavra, "when") == 0)          return TOKEN_WHEN;
     if (strcmp(palavra, "detected") == 0)      return TOKEN_DETECTED;
     if (strcmp(palavra, "not_detected") == 0)  return TOKEN_NOT_DETECTED;
-
+    
     if (strcmp(palavra, "dispositivo") == 0)   return TOKEN_DEVICE;
     if (strcmp(palavra, "pino") == 0)          return TOKEN_PIN;
     if (strcmp(palavra, "ligar") == 0)         return TOKEN_LIGAR;
@@ -93,17 +85,13 @@ static TokenType verificar_palavra_reservada(const char *palavra) {
     if (strcmp(palavra, "quando") == 0)        return TOKEN_WHEN;
     if (strcmp(palavra, "detectado") == 0)     return TOKEN_DETECTED;
     if (strcmp(palavra, "nao_detectado") == 0) return TOKEN_NOT_DETECTED;
-
     return TOKEN_IDENTIFIER;
 }
-
-
 static Token lexer_ler_identificador(Lexer *lexer) {
     char buffer[MAX_TOKEN_LEN];
     int i = 0;
     int linha_inicio = lexer->linha;
     int coluna_inicio = lexer->coluna;
-
     while (!lexer->eof && (isalnum(lexer->caractere_atual) || lexer->caractere_atual == '_')) {
         if (i < MAX_TOKEN_LEN - 1) {
             buffer[i++] = lexer->caractere_atual;
@@ -111,17 +99,14 @@ static Token lexer_ler_identificador(Lexer *lexer) {
         lexer_avancar(lexer);
     }
     buffer[i] = '\0';
-
     TokenType tipo = verificar_palavra_reservada(buffer);
     return criar_token(tipo, buffer, linha_inicio, coluna_inicio);
 }
-
 static Token lexer_ler_numero(Lexer *lexer) {
     char buffer[MAX_TOKEN_LEN];
     int i = 0;
     int linha_inicio = lexer->linha;
     int coluna_inicio = lexer->coluna;
-
     while (!lexer->eof && isdigit(lexer->caractere_atual)) {
         if (i < MAX_TOKEN_LEN - 1) {
             buffer[i++] = lexer->caractere_atual;
@@ -129,19 +114,16 @@ static Token lexer_ler_numero(Lexer *lexer) {
         lexer_avancar(lexer);
     }
     buffer[i] = '\0';
-
     return criar_token(TOKEN_NUMBER, buffer, linha_inicio, coluna_inicio);
 }
-
 static Token lexer_ler_pino_analogico(Lexer *lexer) {
     char buffer[MAX_TOKEN_LEN];
     int i = 0;
     int linha_inicio = lexer->linha;
     int coluna_inicio = lexer->coluna;
-
+    
     buffer[i++] = lexer->caractere_atual; 
     lexer_avancar(lexer);
-
     while (!lexer->eof && isdigit(lexer->caractere_atual)) {
         if (i < MAX_TOKEN_LEN - 1) {
             buffer[i++] = lexer->caractere_atual;
@@ -149,20 +131,16 @@ static Token lexer_ler_pino_analogico(Lexer *lexer) {
         lexer_avancar(lexer);
     }
     buffer[i] = '\0';
-
     return criar_token(TOKEN_ANALOG_PIN, buffer, linha_inicio, coluna_inicio);
 }
-
 static Token lexer_ler_operador(Lexer *lexer) {
     char buffer[3];
     int linha_inicio = lexer->linha;
     int coluna_inicio = lexer->coluna;
     char proximo;
-
     buffer[0] = lexer->caractere_atual;
     buffer[1] = '\0';
     buffer[2] = '\0';
-
     switch (lexer->caractere_atual) {
         case '=':
             proximo = lexer_espiar(lexer);
@@ -174,7 +152,6 @@ static Token lexer_ler_operador(Lexer *lexer) {
             }
             lexer_avancar(lexer);
             return criar_token(TOKEN_OP_ASSIGN, "=", linha_inicio, coluna_inicio);
-
         case '!':
             proximo = lexer_espiar(lexer);
             if (proximo == '=') {
@@ -184,7 +161,6 @@ static Token lexer_ler_operador(Lexer *lexer) {
             }
             lexer_avancar(lexer);
             return criar_token(TOKEN_ERROR, "!", linha_inicio, coluna_inicio);
-
         case '>':
             proximo = lexer_espiar(lexer);
             if (proximo == '=') {
@@ -194,7 +170,6 @@ static Token lexer_ler_operador(Lexer *lexer) {
             }
             lexer_avancar(lexer);
             return criar_token(TOKEN_OP_GREATER, ">", linha_inicio, coluna_inicio);
-
         case '<':
             proximo = lexer_espiar(lexer);
             if (proximo == '=') {
@@ -204,37 +179,30 @@ static Token lexer_ler_operador(Lexer *lexer) {
             }
             lexer_avancar(lexer);
             return criar_token(TOKEN_OP_LESS, "<", linha_inicio, coluna_inicio);
-
         default:
             lexer_avancar(lexer);
             return criar_token(TOKEN_ERROR, buffer, linha_inicio, coluna_inicio);
     }
 }
-
-
 Lexer* lexer_criar(const char *caminho_arquivo) {
     Lexer *lexer = (Lexer*)malloc(sizeof(Lexer));
     if (!lexer) {
         fprintf(stderr, "Erro: falha ao alocar memória para o lexer.\n");
         return NULL;
     }
-
     lexer->arquivo = fopen(caminho_arquivo, "r");
     if (!lexer->arquivo) {
         fprintf(stderr, "Erro: não foi possível abrir o arquivo '%s'.\n", caminho_arquivo);
         free(lexer);
         return NULL;
     }
-
     lexer->linha = 1;
     lexer->coluna = 0;
     lexer->eof = 0;
-
+    
     lexer_avancar(lexer);
-
     return lexer;
 }
-
 void lexer_destruir(Lexer *lexer) {
     if (lexer) {
         if (lexer->arquivo) {
@@ -243,32 +211,29 @@ void lexer_destruir(Lexer *lexer) {
         free(lexer);
     }
 }
-
 Token lexer_proximo_token(Lexer *lexer) {
     lexer_pular_insignificantes(lexer);
-
     if (lexer->eof) {
         return criar_token(TOKEN_EOF, "EOF", lexer->linha, lexer->coluna);
     }
-
     char c = lexer->caractere_atual;
-
+    
     if (c == 'A' && isdigit(lexer_espiar(lexer))) {
         return lexer_ler_pino_analogico(lexer);
     }
-
+    
     if (isalpha(c) || c == '_') {
         return lexer_ler_identificador(lexer);
     }
-
+    
     if (isdigit(c)) {
         return lexer_ler_numero(lexer);
     }
-
+    
     if (c == '=' || c == '!' || c == '>' || c == '<') {
         return lexer_ler_operador(lexer);
     }
-
+    
     if (c == '+') {
         lexer_avancar(lexer);
         return criar_token(TOKEN_OP_PLUS, "+", lexer->linha, lexer->coluna);
@@ -285,7 +250,7 @@ Token lexer_proximo_token(Lexer *lexer) {
         lexer_avancar(lexer);
         return criar_token(TOKEN_OP_DIV, "/", lexer->linha, lexer->coluna);
     }
-
+    
     if (c == '{') {
         lexer_avancar(lexer);
         return criar_token(TOKEN_LBRACE, "{", lexer->linha, lexer->coluna);
@@ -306,14 +271,13 @@ Token lexer_proximo_token(Lexer *lexer) {
         lexer_avancar(lexer);
         return criar_token(TOKEN_RPAREN, ")", lexer->linha, lexer->coluna);
     }
-
+    
     char erro[2] = {c, '\0'};
     int linha = lexer->linha;
     int coluna = lexer->coluna;
     lexer_avancar(lexer);
     return criar_token(TOKEN_ERROR, erro, linha, coluna);
 }
-
 const char* token_tipo_nome(TokenType tipo) {
     switch (tipo) {
         case TOKEN_DEVICE:          return "KEYWORD_DEVICE";
@@ -355,7 +319,6 @@ const char* token_tipo_nome(TokenType tipo) {
         default:                    return "DESCONHECIDO";
     }
 }
-
 void token_imprimir(Token token) {
     printf("[Linha %3d, Col %3d] %-22s | %s\n",
            token.linha, token.coluna,

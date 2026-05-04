@@ -50,6 +50,10 @@
 \tableofcontents
 \newpage
 
+\noindent\textbf{Nota de compilação no Overleaf:} este arquivo utiliza \texttt{\textbackslash lstinputlisting} para incluir os códigos-fonte completos. Ao subir no Overleaf, envie também os arquivos \texttt{lexer\_completo\_sem\_comentarios.c} e \texttt{parser\_completo\_sem\_comentarios.c} na mesma pasta do \texttt{teste.tex}.
+
+\vspace{0.5cm}
+
 \section{Introdução}
 HomeScript é uma linguagem de domínio específico para automação residencial. O objetivo da linguagem é permitir que o usuário descreva regras de controle (sensores, dispositivos e ações) em alto nível e, depois, transformar essas regras em código C.
 
@@ -283,99 +287,14 @@ Saída léxica (ordem):
 \end{enumerate}
 
 \subsection{Código do Analisador Léxico (sem comentários)}
-\begin{lstlisting}[language=C,basicstyle=\ttfamily\scriptsize,frame=single,breaklines=true,numbers=left,numberstyle=\tiny]
-static void lexer_avancar(Lexer *lexer) {
-    if (lexer->eof) return;
-    lexer->caractere_atual = fgetc(lexer->arquivo);
-    if (lexer->caractere_atual == EOF) {
-        lexer->eof = 1;
-        lexer->caractere_atual = '\0';
-    } else if (lexer->caractere_atual == '\n') {
-        lexer->linha++;
-        lexer->coluna = 0;
-    } else {
-        lexer->coluna++;
-    }
-}
-
-static char lexer_espiar(Lexer *lexer) {
-    if (lexer->eof) return '\0';
-    char c = fgetc(lexer->arquivo);
-    if (c == EOF) return '\0';
-    ungetc(c, lexer->arquivo);
-    return c;
-}
-
-static Token lexer_ler_identificador(Lexer *lexer) {
-    char buffer[MAX_TOKEN_LEN];
-    int i = 0, linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
-    while (!lexer->eof && (isalnum(lexer->caractere_atual) || lexer->caractere_atual == '_')) {
-        if (i < MAX_TOKEN_LEN - 1) buffer[i++] = lexer->caractere_atual;
-        lexer_avancar(lexer);
-    }
-    buffer[i] = '\0';
-    return criar_token(verificar_palavra_reservada(buffer), buffer, linha_inicio, coluna_inicio);
-}
-
-static Token lexer_ler_numero(Lexer *lexer) {
-    char buffer[MAX_TOKEN_LEN];
-    int i = 0, linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
-    while (!lexer->eof && isdigit(lexer->caractere_atual)) {
-        if (i < MAX_TOKEN_LEN - 1) buffer[i++] = lexer->caractere_atual;
-        lexer_avancar(lexer);
-    }
-    buffer[i] = '\0';
-    return criar_token(TOKEN_NUMBER, buffer, linha_inicio, coluna_inicio);
-}
-
-static Token lexer_ler_operador(Lexer *lexer) {
-    int linha_inicio = lexer->linha, coluna_inicio = lexer->coluna;
-    char proximo;
-    switch (lexer->caractere_atual) {
-        case '=':
-            proximo = lexer_espiar(lexer);
-            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_EQUAL, "==", linha_inicio, coluna_inicio); }
-            lexer_avancar(lexer); return criar_token(TOKEN_OP_ASSIGN, "=", linha_inicio, coluna_inicio);
-        case '!':
-            proximo = lexer_espiar(lexer);
-            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_NOT_EQUAL, "!=", linha_inicio, coluna_inicio); }
-            lexer_avancar(lexer); return criar_token(TOKEN_ERROR, "!", linha_inicio, coluna_inicio);
-        case '>':
-            proximo = lexer_espiar(lexer);
-            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_GREATER_EQUAL, ">=", linha_inicio, coluna_inicio); }
-            lexer_avancar(lexer); return criar_token(TOKEN_OP_GREATER, ">", linha_inicio, coluna_inicio);
-        case '<':
-            proximo = lexer_espiar(lexer);
-            if (proximo == '=') { lexer_avancar(lexer); lexer_avancar(lexer); return criar_token(TOKEN_OP_LESS_EQUAL, "<=", linha_inicio, coluna_inicio); }
-            lexer_avancar(lexer); return criar_token(TOKEN_OP_LESS, "<", linha_inicio, coluna_inicio);
-        default:
-            lexer_avancar(lexer); return criar_token(TOKEN_ERROR, "?", linha_inicio, coluna_inicio);
-    }
-}
-
-Token lexer_proximo_token(Lexer *lexer) {
-    lexer_pular_insignificantes(lexer);
-    if (lexer->eof) return criar_token(TOKEN_EOF, "EOF", lexer->linha, lexer->coluna);
-    char c = lexer->caractere_atual;
-    if (c == 'A' && isdigit(lexer_espiar(lexer))) return lexer_ler_pino_analogico(lexer);
-    if (isalpha(c) || c == '_') return lexer_ler_identificador(lexer);
-    if (isdigit(c)) return lexer_ler_numero(lexer);
-    if (c == '=' || c == '!' || c == '>' || c == '<') return lexer_ler_operador(lexer);
-    if (c == '+') { lexer_avancar(lexer); return criar_token(TOKEN_OP_PLUS, "+", lexer->linha, lexer->coluna); }
-    if (c == '-') { lexer_avancar(lexer); return criar_token(TOKEN_OP_MINUS, "-", lexer->linha, lexer->coluna); }
-    if (c == '*') { lexer_avancar(lexer); return criar_token(TOKEN_OP_MULT, "*", lexer->linha, lexer->coluna); }
-    if (c == '/') { lexer_avancar(lexer); return criar_token(TOKEN_OP_DIV, "/", lexer->linha, lexer->coluna); }
-    if (c == '{') { lexer_avancar(lexer); return criar_token(TOKEN_LBRACE, "{", lexer->linha, lexer->coluna); }
-    if (c == '}') { lexer_avancar(lexer); return criar_token(TOKEN_RBRACE, "}", lexer->linha, lexer->coluna); }
-    if (c == ';') { lexer_avancar(lexer); return criar_token(TOKEN_SEMICOLON, ";", lexer->linha, lexer->coluna); }
-    if (c == '(') { lexer_avancar(lexer); return criar_token(TOKEN_LPAREN, "(", lexer->linha, lexer->coluna); }
-    if (c == ')') { lexer_avancar(lexer); return criar_token(TOKEN_RPAREN, ")", lexer->linha, lexer->coluna); }
-    char erro[2] = {c, '\0'};
-    int linha = lexer->linha, coluna = lexer->coluna;
-    lexer_avancar(lexer);
-    return criar_token(TOKEN_ERROR, erro, linha, coluna);
-}
-\end{lstlisting}
+\lstinputlisting[
+  language=C,
+  basicstyle=\ttfamily\scriptsize,
+  frame=single,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny
+]{lexer_completo_sem_comentarios.c}
 
 \section{Analisador Sintático}
 
@@ -429,62 +348,14 @@ Quando o token atual não corresponde ao esperado, o parser:
 \end{enumerate}
 
 \subsection{Código do Analisador Sintático (sem comentários)}
-\begin{lstlisting}[language=C,basicstyle=\ttfamily\scriptsize,frame=single,breaklines=true,numbers=left,numberstyle=\tiny]
-static void parser_avancar(Parser *parser) {
-    parser->token_atual = lexer_proximo_token(parser->lexer);
-}
-
-static int parser_verificar(Parser *parser, TokenType tipo) {
-    return parser->token_atual.tipo == tipo;
-}
-
-static int parser_consumir(Parser *parser, TokenType tipo, const char *mensagem_erro) {
-    if (parser->token_atual.tipo == tipo) {
-        parser_avancar(parser);
-        return 1;
-    }
-    parser_registrar_erro(parser, mensagem_erro);
-    return 0;
-}
-
-static ASTNode* parser_turn_cmd(Parser *parser) {
-    ASTNode *no = ast_criar_no(NODE_TURN_CMD);
-    if (parser_verificar(parser, TOKEN_LIGAR)) {
-        no->estado = STATE_ON;
-        parser_avancar(parser);
-        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'ligar'"); ast_destruir(no); return NULL; }
-        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
-        parser_avancar(parser);
-    } else if (parser_verificar(parser, TOKEN_DESLIGAR)) {
-        no->estado = STATE_OFF;
-        parser_avancar(parser);
-        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'desligar'"); ast_destruir(no); return NULL; }
-        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
-        parser_avancar(parser);
-    } else {
-        parser_avancar(parser);
-        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) { parser_registrar_erro(parser, "Nome do dispositivo esperado após 'turn'"); ast_destruir(no); return NULL; }
-        strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
-        parser_avancar(parser);
-        if (parser_verificar(parser, TOKEN_ON)) no->estado = STATE_ON;
-        else if (parser_verificar(parser, TOKEN_OFF)) no->estado = STATE_OFF;
-        else { parser_registrar_erro(parser, "'on' ou 'off' esperado"); ast_destruir(no); return NULL; }
-        parser_avancar(parser);
-    }
-    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após comando turn")) { ast_destruir(no); return NULL; }
-    return no;
-}
-
-ASTNode* parser_analisar(Parser *parser) {
-    ASTNode *programa = ast_criar_no(NODE_PROGRAM);
-    if (programa) { programa->linha = 1; programa->coluna = 1; }
-    while (!parser_verificar(parser, TOKEN_EOF) && !parser->erro) {
-        ASTNode *stmt = parser_statement(parser);
-        if (stmt) ast_adicionar_filho(programa, stmt);
-    }
-    return programa;
-}
-\end{lstlisting}
+\lstinputlisting[
+  language=C,
+  basicstyle=\ttfamily\scriptsize,
+  frame=single,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny
+]{parser_completo_sem_comentarios.c}
 
 \section{Conclusão}
 A especificação da HomeScript combina simplicidade de escrita com estrutura formal de compilador:
