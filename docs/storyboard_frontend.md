@@ -21,6 +21,8 @@ A troca ocorre pelos botões `Editor` e `Visual Builder` no cabeçalho.
 ## Tela 1 - IDE (modo Editor)
 Esta é **uma única tela**, organizada em seções.
 
+![Tela 1 - IDE Editor](../img/tela1.png)
+
 ### Seção A - Cabeçalho (`header`)
 **Elementos visíveis:**
 - Logo `HomeScript IDE`
@@ -74,6 +76,8 @@ Layout com split horizontal, ajustável pelo usuário.
 
 ## Tela 2 - Programação Visual (modo Visual Builder)
 Tela dedicada à montagem de automações sem digitar código.
+
+![Tela 2 - Visual Builder](../img/tela2.png)
 
 ### Seção A - Cadastro de dispositivos e sensores
 **Elementos visíveis:**
