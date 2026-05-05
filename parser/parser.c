@@ -547,6 +547,16 @@ static ASTNode* parser_if_stmt(Parser *parser) {
     }
     ast_adicionar_filho(no, bloco);
 
+    if (parser_verificar(parser, TOKEN_ELSE)) {
+        parser_avancar(parser);
+        bloco = parser_bloco(parser);
+        if (!bloco) {
+            ast_destruir(no);
+            return NULL;
+        }
+        ast_adicionar_filho(no, bloco);
+    }
+
     return no;
 }
 
@@ -569,6 +579,16 @@ static ASTNode* parser_when_stmt(Parser *parser) {
         return NULL;
     }
     ast_adicionar_filho(no, bloco);
+
+    if (parser_verificar(parser, TOKEN_ELSE)) {
+        parser_avancar(parser);
+        bloco = parser_bloco(parser);
+        if (!bloco) {
+            ast_destruir(no);
+            return NULL;
+        }
+        ast_adicionar_filho(no, bloco);
+    }
 
     return no;
 }
@@ -598,6 +618,10 @@ static ASTNode* parser_statement(Parser *parser) {
             return parser_if_stmt(parser);
         case TOKEN_WHEN:
             return parser_when_stmt(parser);
+        case TOKEN_ELSE:
+            parser_registrar_erro(parser, "Bloco 'else/senao' sem if/when correspondente");
+            parser_avancar(parser);
+            return NULL;
         case TOKEN_ERROR:
             parser_registrar_erro(parser, "Token inválido encontrado");
             parser_avancar(parser);

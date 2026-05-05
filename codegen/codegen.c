@@ -213,7 +213,8 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
         case NODE_IF_STMT:
         case NODE_WHEN_STMT: {
             ASTNode *cond = no->filhos[0];
-            ASTNode *bloco = no->filhos[1];
+            ASTNode *bloco_then = no->filhos[1];
+            ASTNode *bloco_else = (no->num_filhos >= 3) ? no->filhos[2] : NULL;
             int idx = sensor_index(gen, cond->nome);
             int detected = strcmp(cond->valor_comparacao, "detected") == 0 || strcmp(cond->valor_comparacao, "detectado") == 0;
             int not_detected = strcmp(cond->valor_comparacao, "not_detected") == 0 || strcmp(cond->valor_comparacao, "nao_detectado") == 0;
@@ -258,13 +259,25 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             }
 
             gen->nivel_indentacao++;
-            for (i = 0; i < bloco->num_filhos; i++) {
-                codegen_comando(gen, bloco->filhos[i]);
+            for (i = 0; i < bloco_then->num_filhos; i++) {
+                codegen_comando(gen, bloco_then->filhos[i]);
             }
             gen->nivel_indentacao--;
 
             codegen_indentar(gen);
             codegen_escrever(gen, "}\n");
+
+            if (bloco_else) {
+                codegen_indentar(gen);
+                codegen_escrever(gen, "else {\n");
+                gen->nivel_indentacao++;
+                for (i = 0; i < bloco_else->num_filhos; i++) {
+                    codegen_comando(gen, bloco_else->filhos[i]);
+                }
+                gen->nivel_indentacao--;
+                codegen_indentar(gen);
+                codegen_escrever(gen, "}\n");
+            }
             break;
         }
 

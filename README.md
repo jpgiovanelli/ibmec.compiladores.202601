@@ -34,6 +34,10 @@ Pipeline: **`.iot` → Tokens (Lexer) → AST (Parser) → Código C/Arduino (Co
   - `sensor temperatura tipo dht11 pino 2;`
   - `sensor distancia tipo hcsr04 gatilho 8 eco 9;`
 
+### Condicionais com `else`
+- Inglês: `if/when ... { ... } else { ... }`
+- PT-BR: `se/quando ... { ... } senao { ... }`
+
 ### Código-fonte (por fase do compilador)
 - **Lexer**: [`lexer/`](lexer/)
 - **Parser + AST**: [`parser/`](parser/)

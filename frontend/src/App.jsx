@@ -80,8 +80,8 @@ function configurarHomeScript(monaco) {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
-        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
-        [/\b(dispositivo|pino|ligar|desligar|esperar|se|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
+        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|else|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
+        [/\b(dispositivo|pino|ligar|desligar|esperar|se|senao|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
         [/\bA[0-9]+\b/, 'number'],
         [/\b[0-9]+\b/, 'number'],
         [/[{}()[\]]/, '@brackets'],
@@ -160,6 +160,7 @@ function configurarHomeScript(monaco) {
         { label: 'turn on', insertText: 'turn ${1:dispositivo} on;', detail: 'Ligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'turn off', insertText: 'turn ${1:dispositivo} off;', detail: 'Desligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'when', insertText: 'when ${1:sensor} == ${2:detected} {\n\t$0\n}', detail: 'Regra when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'else', insertText: 'else {\n\t$0\n}', detail: 'Bloco else', kind: k.Keyword, insertTextRules: snippet },
         { label: 'if', insertText: 'if ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Condição if', kind: k.Keyword, insertTextRules: snippet },
         { label: 'wait', insertText: 'wait ${1:1000};', detail: 'Aguardar em ms', kind: k.Keyword, insertTextRules: snippet },
         { label: 'print', insertText: 'print ${1:valor};', detail: 'Impressão serial', kind: k.Keyword, insertTextRules: snippet },
@@ -171,6 +172,7 @@ function configurarHomeScript(monaco) {
         { label: 'desligar', insertText: 'desligar ${1:dispositivo};', detail: 'Atalho PT-BR para desligar', kind: k.Keyword, insertTextRules: snippet },
         { label: 'esperar', insertText: 'esperar ${1:1000};', detail: 'Atalho PT-BR para wait', kind: k.Keyword, insertTextRules: snippet },
         { label: 'quando', insertText: 'quando ${1:sensor} == ${2:detectado} {\n\t$0\n}', detail: 'Atalho PT-BR para when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'senao', insertText: 'senao {\n\t$0\n}', detail: 'Bloco else (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
         { label: 'se', insertText: 'se ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Atalho PT-BR para if', kind: k.Keyword, insertTextRules: snippet }
       ].map((item) => ({ ...item, range }))
 
@@ -713,7 +715,18 @@ function VisualBuilder({ onGenerate }) {
     trig: '',
     echo: ''
   }])
-  const [regras, setRegras] = useState([{ gatilho: '', operador: '==', valor: 'detected', acao: '', estado: 'on', wait: '' }])
+  const [regras, setRegras] = useState([{
+    gatilho: '',
+    operador: '==',
+    valor: 'detected',
+    acao: '',
+    estado: 'on',
+    wait: '',
+    usarElse: false,
+    acaoElse: '',
+    estadoElse: 'off',
+    waitElse: ''
+  }])
 
   const addDevice = () => setDevices([...devices, {
     nome: '',
@@ -740,7 +753,18 @@ function VisualBuilder({ onGenerate }) {
     setDevices(updated)
   }
 
-  const addRegra = () => setRegras([...regras, { gatilho: '', operador: '==', valor: 'detected', acao: '', estado: 'on', wait: '' }])
+  const addRegra = () => setRegras([...regras, {
+    gatilho: '',
+    operador: '==',
+    valor: 'detected',
+    acao: '',
+    estado: 'on',
+    wait: '',
+    usarElse: false,
+    acaoElse: '',
+    estadoElse: 'off',
+    waitElse: ''
+  }])
   const removeRegra = (i) => setRegras(regras.filter((_, idx) => idx !== i))
   const updateRegra = (i, field, val) => {
     const updated = [...regras]
@@ -795,7 +819,17 @@ function VisualBuilder({ onGenerate }) {
         if (r.wait) {
           code += `    wait ${r.wait};\n`
         }
-        code += '}\n\n'
+        code += '}'
+        if (r.usarElse && r.acaoElse) {
+          code += ' else {\n'
+          code += `    turn ${r.acaoElse} ${r.estadoElse};\n`
+          if (r.waitElse) {
+            code += `    wait ${r.waitElse};\n`
+          }
+          code += '}\n\n'
+        } else {
+          code += '\n\n'
+        }
       }
     })
 
@@ -901,6 +935,29 @@ function VisualBuilder({ onGenerate }) {
             {regras.length > 1 && (
               <button className="rule-remove" onClick={() => removeRegra(i)}>✕</button>
             )}
+            <label style={{ color: 'var(--text-secondary)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={!!r.usarElse}
+                onChange={e => updateRegra(i, 'usarElse', e.target.checked)}
+              />
+              Else (senão)
+            </label>
+            {r.usarElse && (
+              <>
+                <span style={{ color: 'var(--accent-red)', fontWeight: 600, fontSize: 13 }}>ELSE</span>
+                <select className="builder-select" value={r.acaoElse} onChange={e => updateRegra(i, 'acaoElse', e.target.value)}>
+                  <option value="">Selecionar dispositivo...</option>
+                  {deviceNames.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select className="builder-select" value={r.estadoElse} onChange={e => updateRegra(i, 'estadoElse', e.target.value)} style={{ width: 80 }}>
+                  <option value="on">ON</option>
+                  <option value="off">OFF</option>
+                </select>
+                <input className="builder-input" placeholder="Wait else (ms)" value={r.waitElse}
+                  onChange={e => updateRegra(i, 'waitElse', e.target.value)} style={{ width: 130 }} />
+              </>
+            )}
           </div>
         ))}
         <button className="add-btn" onClick={addRegra}>+ Adicionar regra</button>
@@ -925,6 +982,7 @@ function App() {
   const [codigo, setCodigo] = useState(EXEMPLOS[0].codigo)
   const [resultado, setResultado] = useState(null)
   const [abaResultado, setAbaResultado] = useState('execucao')
+  const [copiado, setCopiado] = useState(false)
   const [compilando, setCompilando] = useState(false)
   const [erro, setErro] = useState(null)
   const [erroDetalhes, setErroDetalhes] = useState([])
@@ -946,7 +1004,7 @@ function App() {
       const res = await compilar(codigo)
       if (res.sucesso) {
         setResultado(res)
-        setAbaResultado('execucao')
+        setAbaResultado('codigo')
         setErroDetalhes([])
       } else {
         setErro(res.erro || 'Erro desconhecido')
@@ -1003,9 +1061,22 @@ function App() {
   const handleVisualGenerate = (generatedCode) => {
     setCodigo(generatedCode)
     setModo('editor')
+    setAbaResultado('codigo')
     setResultado(null)
     setErro(null)
     setErroDetalhes([])
+  }
+
+  const handleCopiarCodigo = async () => {
+    const texto = resultado?.codigo_c || ''
+    if (!texto) return
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1500)
+    } catch {
+      setCopiado(false)
+    }
   }
 
   return (
@@ -1132,22 +1203,34 @@ function App() {
             {/* Painel de Resultado */}
             <div className="result-panel" style={{ flex: `0 0 ${100 - editorWidth}%` }}>
               <div className="result-tabs">
-                <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('codigo')}>
-                  Código C
-                </button>
-                <button className={`result-tab ${abaResultado === 'execucao' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('execucao')}>
-                  Execução
-                </button>
-                <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('tokens')}>
-                  Tokens
-                </button>
-                <button className={`result-tab ${abaResultado === 'ast' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('ast')}>
-                  AST
-                </button>
+                <div className="result-tabs-left">
+                  <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('codigo')}>
+                    Código C
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'execucao' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('execucao')}>
+                    Execução
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('tokens')}>
+                    Tokens
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'ast' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('ast')}>
+                    AST
+                  </button>
+                </div>
+                {abaResultado === 'codigo' && (
+                  <button
+                    className="result-copy-btn"
+                    onClick={handleCopiarCodigo}
+                    title="Copiar código C"
+                    disabled={!resultado?.codigo_c}
+                  >
+                    {copiado ? '✓ Copiado' : '📋 Copiar'}
+                  </button>
+                )}
               </div>
 
               <div className="result-content">
