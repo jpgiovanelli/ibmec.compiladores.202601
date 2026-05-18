@@ -23,6 +23,8 @@ typedef enum {
     TOKEN_OFF,              /* off */
     TOKEN_WAIT,             /* wait / esperar */
     TOKEN_IF,               /* if / se */
+    TOKEN_FOR,              /* for / para */
+    TOKEN_WHILE,            /* while / enquanto */
     TOKEN_ELSE,             /* else / senao */
     TOKEN_WHEN,             /* when / quando */
     TOKEN_DETECTED,         /* detected / detectado */

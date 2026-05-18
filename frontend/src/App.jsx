@@ -80,8 +80,8 @@ function configurarHomeScript(monaco) {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
-        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|else|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
-        [/\b(dispositivo|pino|ligar|desligar|esperar|se|senao|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
+        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|else|for|while|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
+        [/\b(dispositivo|pino|ligar|desligar|esperar|se|senao|para|enquanto|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
         [/\bA[0-9]+\b/, 'number'],
         [/\b[0-9]+\b/, 'number'],
         [/[{}()[\]]/, '@brackets'],
@@ -161,6 +161,8 @@ function configurarHomeScript(monaco) {
         { label: 'turn off', insertText: 'turn ${1:dispositivo} off;', detail: 'Desligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'when', insertText: 'when ${1:sensor} == ${2:detected} {\n\t$0\n}', detail: 'Regra when', kind: k.Keyword, insertTextRules: snippet },
         { label: 'else', insertText: 'else {\n\t$0\n}', detail: 'Bloco else', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'while', insertText: 'while ${1:contador} < ${2:10} {\n\t$0\n}', detail: 'Laço while', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'for', insertText: 'for ${1:i} = ${2:0}; ${1:i} < ${3:10}; ${1:i} = ${1:i} + 1 {\n\t$0\n}', detail: 'Laço for', kind: k.Keyword, insertTextRules: snippet },
         { label: 'if', insertText: 'if ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Condição if', kind: k.Keyword, insertTextRules: snippet },
         { label: 'wait', insertText: 'wait ${1:1000};', detail: 'Aguardar em ms', kind: k.Keyword, insertTextRules: snippet },
         { label: 'print', insertText: 'print ${1:valor};', detail: 'Impressão serial', kind: k.Keyword, insertTextRules: snippet },
@@ -173,6 +175,8 @@ function configurarHomeScript(monaco) {
         { label: 'esperar', insertText: 'esperar ${1:1000};', detail: 'Atalho PT-BR para wait', kind: k.Keyword, insertTextRules: snippet },
         { label: 'quando', insertText: 'quando ${1:sensor} == ${2:detectado} {\n\t$0\n}', detail: 'Atalho PT-BR para when', kind: k.Keyword, insertTextRules: snippet },
         { label: 'senao', insertText: 'senao {\n\t$0\n}', detail: 'Bloco else (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'enquanto', insertText: 'enquanto ${1:contador} < ${2:10} {\n\t$0\n}', detail: 'Laço while (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'para', insertText: 'para ${1:i} = ${2:0}; ${1:i} < ${3:10}; ${1:i} = ${1:i} + 1 {\n\t$0\n}', detail: 'Laço for (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
         { label: 'se', insertText: 'se ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Atalho PT-BR para if', kind: k.Keyword, insertTextRules: snippet }
       ].map((item) => ({ ...item, range }))
 

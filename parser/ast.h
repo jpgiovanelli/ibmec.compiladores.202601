@@ -19,6 +19,8 @@ typedef enum {
     NODE_TURN_CMD,          /* Comando turn on/off */
     NODE_WAIT_CMD,          /* Comando wait */
     NODE_IF_STMT,           /* Estrutura if */
+    NODE_FOR_STMT,          /* Estrutura for */
+    NODE_WHILE_STMT,        /* Estrutura while */
     NODE_WHEN_STMT,         /* Estrutura when */
     NODE_BLOCK,             /* Bloco de comandos { } */
     NODE_CONDITION          /* Condição (sensor op valor) */

@@ -59,6 +59,8 @@ const char* ast_tipo_nome(NodeType tipo) {
         case NODE_TURN_CMD:     return "TurnCommand";
         case NODE_WAIT_CMD:     return "WaitCommand";
         case NODE_IF_STMT:      return "IfStatement";
+        case NODE_FOR_STMT:     return "ForStatement";
+        case NODE_WHILE_STMT:   return "WhileStatement";
         case NODE_WHEN_STMT:    return "WhenStatement";
         case NODE_BLOCK:        return "Block";
         case NODE_CONDITION:    return "Condition";

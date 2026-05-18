@@ -38,6 +38,14 @@ Pipeline: **`.iot` → Tokens (Lexer) → AST (Parser) → Código C/Arduino (Co
 - Inglês: `if/when ... { ... } else { ... }`
 - PT-BR: `se/quando ... { ... } senao { ... }`
 
+### Laços (`for` e `while`)
+- Inglês:
+  - `for i = 0; i < 10; i = i + 1 { ... }`
+  - `while i < 10 { ... }`
+- PT-BR:
+  - `para i = 0; i < 10; i = i + 1 { ... }`
+  - `enquanto i < 10 { ... }`
+
 ### Código-fonte (por fase do compilador)
 - **Lexer**: [`lexer/`](lexer/)
 - **Parser + AST**: [`parser/`](parser/)

@@ -177,6 +177,39 @@ static void codegen_setup(CodeGenerator *gen, ASTNode *programa) {
     codegen_escrever(gen, "}\n\n");
 }
 
+static void codegen_condicao_expr(CodeGenerator *gen, ASTNode *cond, char *out, size_t out_len) {
+    int idx = sensor_index(gen, cond->nome);
+    int detected = strcmp(cond->valor_comparacao, "detected") == 0 || strcmp(cond->valor_comparacao, "detectado") == 0;
+    int not_detected = strcmp(cond->valor_comparacao, "not_detected") == 0 || strcmp(cond->valor_comparacao, "nao_detectado") == 0;
+
+    if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "hcsr04") == 0) {
+        if (detected) {
+            snprintf(out, out_len, "read_%s_cm() > 0", cond->nome);
+        } else if (not_detected) {
+            snprintf(out, out_len, "read_%s_cm() == 0", cond->nome);
+        } else {
+            snprintf(out, out_len, "read_%s_cm() %s %s",
+                     cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        }
+    } else if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "dht11") == 0) {
+        snprintf(out, out_len, "%s_dht.readTemperature() %s %s",
+                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+    } else if (detected) {
+        snprintf(out, out_len, "digitalRead(%s_pin) == HIGH", cond->nome);
+    } else if (not_detected) {
+        snprintf(out, out_len, "digitalRead(%s_pin) == LOW", cond->nome);
+    } else if (idx >= 0 && eh_pino_analogico(gen->sensores_pin1[idx])) {
+        snprintf(out, out_len, "analogRead(%s_pin) %s %s",
+                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+    } else if (idx >= 0) {
+        snprintf(out, out_len, "digitalRead(%s_pin) %s %s",
+                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+    } else {
+        snprintf(out, out_len, "%s %s %s",
+                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+    }
+}
+
 static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
     int i;
 
@@ -215,48 +248,11 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *cond = no->filhos[0];
             ASTNode *bloco_then = no->filhos[1];
             ASTNode *bloco_else = (no->num_filhos >= 3) ? no->filhos[2] : NULL;
-            int idx = sensor_index(gen, cond->nome);
-            int detected = strcmp(cond->valor_comparacao, "detected") == 0 || strcmp(cond->valor_comparacao, "detectado") == 0;
-            int not_detected = strcmp(cond->valor_comparacao, "not_detected") == 0 || strcmp(cond->valor_comparacao, "nao_detectado") == 0;
+            char cond_expr[256];
 
             codegen_indentar(gen);
-
-            if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "hcsr04") == 0) {
-                if (detected) {
-                    codegen_escrever_fmt(gen, "if (read_%s_cm() > 0) {\n", cond->nome);
-                } else if (not_detected) {
-                    codegen_escrever_fmt(gen, "if (read_%s_cm() == 0) {\n", cond->nome);
-                } else {
-                    codegen_escrever_fmt(gen, "if (read_%s_cm() %s %s) {\n",
-                                        cond->nome,
-                                        ast_operador_simbolo(cond->operador),
-                                        cond->valor_comparacao);
-                }
-            } else if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "dht11") == 0) {
-                codegen_escrever_fmt(gen, "if (%s_dht.readTemperature() %s %s) {\n",
-                                    cond->nome,
-                                    ast_operador_simbolo(cond->operador),
-                                    cond->valor_comparacao);
-            } else if (detected) {
-                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == HIGH) {\n", cond->nome);
-            } else if (not_detected) {
-                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) == LOW) {\n", cond->nome);
-            } else if (idx >= 0 && eh_pino_analogico(gen->sensores_pin1[idx])) {
-                codegen_escrever_fmt(gen, "if (analogRead(%s_pin) %s %s) {\n",
-                                    cond->nome,
-                                    ast_operador_simbolo(cond->operador),
-                                    cond->valor_comparacao);
-            } else if (idx >= 0) {
-                codegen_escrever_fmt(gen, "if (digitalRead(%s_pin) %s %s) {\n",
-                                    cond->nome,
-                                    ast_operador_simbolo(cond->operador),
-                                    cond->valor_comparacao);
-            } else {
-                codegen_escrever_fmt(gen, "if (%s %s %s) {\n",
-                                    cond->nome,
-                                    ast_operador_simbolo(cond->operador),
-                                    cond->valor_comparacao);
-            }
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
+            codegen_escrever_fmt(gen, "if (%s) {\n", cond_expr);
 
             gen->nivel_indentacao++;
             for (i = 0; i < bloco_then->num_filhos; i++) {
@@ -278,6 +274,43 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
                 codegen_indentar(gen);
                 codegen_escrever(gen, "}\n");
             }
+            break;
+        }
+
+        case NODE_WHILE_STMT: {
+            ASTNode *cond = no->filhos[0];
+            ASTNode *bloco = no->filhos[1];
+            char cond_expr[256];
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "while (%s) {\n", cond_expr);
+            gen->nivel_indentacao++;
+            for (i = 0; i < bloco->num_filhos; i++) {
+                codegen_comando(gen, bloco->filhos[i]);
+            }
+            gen->nivel_indentacao--;
+            codegen_indentar(gen);
+            codegen_escrever(gen, "}\n");
+            break;
+        }
+
+        case NODE_FOR_STMT: {
+            ASTNode *init = no->filhos[0];
+            ASTNode *cond = no->filhos[1];
+            ASTNode *update = no->filhos[2];
+            ASTNode *bloco = no->filhos[3];
+            char cond_expr[256];
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "for (%s = %s; %s; %s = %s) {\n",
+                                 init->nome, init->expressao, cond_expr, update->nome, update->expressao);
+            gen->nivel_indentacao++;
+            for (i = 0; i < bloco->num_filhos; i++) {
+                codegen_comando(gen, bloco->filhos[i]);
+            }
+            gen->nivel_indentacao--;
+            codegen_indentar(gen);
+            codegen_escrever(gen, "}\n");
             break;
         }
 

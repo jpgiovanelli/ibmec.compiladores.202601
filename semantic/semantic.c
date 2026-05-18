@@ -412,6 +412,70 @@ static void analisar_no(SemanticContext *ctx, ASTNode *no) {
             }
             break;
 
+        case NODE_WHILE_STMT:
+            if (no->num_filhos >= 1 && no->filhos[0] && no->filhos[0]->tipo == NODE_CONDITION) {
+                ASTNode *cond = no->filhos[0];
+                if (!symbol_find_var_visible(ctx, cond->nome) && !symbol_find_kind(ctx, cond->nome, SYMBOL_SENSOR)) {
+                    semantic_registrar_erro(
+                        ctx,
+                        cond->linha,
+                        cond->coluna,
+                        "Condicao do while/enquanto usa identificador '%s' nao declarado (nem variavel, nem sensor)",
+                        cond->nome
+                    );
+                }
+                if (!is_number_str(cond->valor_comparacao) &&
+                    !eh_palavra_condicional(cond->valor_comparacao) &&
+                    !symbol_find_var_visible(ctx, cond->valor_comparacao)) {
+                    semantic_registrar_erro(
+                        ctx,
+                        cond->linha,
+                        cond->coluna,
+                        "Valor '%s' da condicao nao e numero, palavra reservada nem variavel declarada",
+                        cond->valor_comparacao
+                    );
+                }
+            }
+            for (i = 1; i < no->num_filhos; i++) {
+                analisar_no(ctx, no->filhos[i]);
+            }
+            break;
+
+        case NODE_FOR_STMT:
+            if (no->num_filhos >= 1 && no->filhos[0]) {
+                analisar_no(ctx, no->filhos[0]); /* init */
+            }
+            if (no->num_filhos >= 2 && no->filhos[1] && no->filhos[1]->tipo == NODE_CONDITION) {
+                ASTNode *cond = no->filhos[1];
+                if (!symbol_find_var_visible(ctx, cond->nome) && !symbol_find_kind(ctx, cond->nome, SYMBOL_SENSOR)) {
+                    semantic_registrar_erro(
+                        ctx,
+                        cond->linha,
+                        cond->coluna,
+                        "Condicao do for/para usa identificador '%s' nao declarado (nem variavel, nem sensor)",
+                        cond->nome
+                    );
+                }
+                if (!is_number_str(cond->valor_comparacao) &&
+                    !eh_palavra_condicional(cond->valor_comparacao) &&
+                    !symbol_find_var_visible(ctx, cond->valor_comparacao)) {
+                    semantic_registrar_erro(
+                        ctx,
+                        cond->linha,
+                        cond->coluna,
+                        "Valor '%s' da condicao nao e numero, palavra reservada nem variavel declarada",
+                        cond->valor_comparacao
+                    );
+                }
+            }
+            if (no->num_filhos >= 3 && no->filhos[2]) {
+                analisar_no(ctx, no->filhos[2]); /* update */
+            }
+            if (no->num_filhos >= 4 && no->filhos[3]) {
+                analisar_no(ctx, no->filhos[3]); /* bloco */
+            }
+            break;
+
         case NODE_DEVICE_DECL:
         case NODE_SENSOR_DECL:
         case NODE_CONDITION:

@@ -1,0 +1,126 @@
+// HomeScript - Cenário residencial completo (versão final com for/while + para/enquanto)
+// Inclui: sensores digitais/analógicos, DHT11, HC-SR04, variáveis, if/when/else, for/while, wait, print
+
+// =========================
+// Dispositivos
+// =========================
+dispositivo luz_sala pino 13;
+dispositivo luz_corredor pino 12;
+dispositivo luz_jardim pino 11;
+dispositivo ventilador_quarto pino 10;
+dispositivo aquecedor_quarto pino 9;
+dispositivo sirene pino 8;
+dispositivo bomba_caixa pino 7;
+dispositivo portao_motor pino 6;
+dispositivo fita_led_garagem pino 5;
+
+// =========================
+// Sensores
+// =========================
+sensor movimento_sala pino 2;
+sensor porta_entrada pino 3;
+sensor luminosidade_jardim pino A0;
+sensor nivel_caixa pino A1;
+sensor temperatura_quarto tipo dht11 pino 4;
+sensor distancia_garagem tipo hcsr04 gatilho 14 eco 15;
+
+// =========================
+// Variáveis de controle
+// =========================
+let limite_luz_jardim = 450;
+let temperatura_max = 29;
+let temperatura_min = 23;
+let nivel_minimo_caixa = 380;
+let distancia_abertura_portao = 35;
+let contador_alertas = 0;
+let contador_movimento = 0;
+let i = 0;
+let tentativas_portao = 0;
+
+// =========================
+// Rotina 1: presença na sala
+// =========================
+quando movimento_sala == detectado {
+    contador_movimento = contador_movimento + 1;
+    ligar luz_sala;
+    esperar 3000;
+} senao {
+    desligar luz_sala;
+}
+
+// =========================
+// Rotina 2: segurança da porta com pulso de sirene usando FOR/PARA
+// =========================
+quando porta_entrada == detectado {
+    contador_alertas = contador_alertas + 1;
+    ligar luz_corredor;
+
+    para i = 0; i < 3; i = i + 1 {
+        ligar sirene;
+        esperar 250;
+        desligar sirene;
+        esperar 250;
+    }
+} senao {
+    desligar luz_corredor;
+}
+
+// =========================
+// Rotina 3: iluminação automática do jardim
+// =========================
+se luminosidade_jardim < limite_luz_jardim {
+    ligar luz_jardim;
+} senao {
+    desligar luz_jardim;
+}
+
+// =========================
+// Rotina 4: conforto térmico no quarto (DHT11)
+// =========================
+se temperatura_quarto > temperatura_max {
+    ligar ventilador_quarto;
+    desligar aquecedor_quarto;
+} senao {
+    se temperatura_quarto < temperatura_min {
+        ligar aquecedor_quarto;
+        desligar ventilador_quarto;
+    } senao {
+        desligar ventilador_quarto;
+        desligar aquecedor_quarto;
+    }
+}
+
+// =========================
+// Rotina 5: bomba da caixa d'água
+// =========================
+if nivel_caixa < nivel_minimo_caixa {
+    turn bomba_caixa on;
+} else {
+    turn bomba_caixa off;
+}
+
+// =========================
+// Rotina 6: garagem inteligente (HC-SR04) com WHILE/ENQUANTO
+// =========================
+quando distancia_garagem < distancia_abertura_portao {
+    tentativas_portao = 0;
+    enquanto tentativas_portao < 2 {
+        ligar portao_motor;
+        ligar fita_led_garagem;
+        esperar 1200;
+        desligar portao_motor;
+        esperar 300;
+        tentativas_portao = tentativas_portao + 1;
+    }
+} senao {
+    desligar portao_motor;
+    desligar fita_led_garagem;
+}
+
+// =========================
+// Rotina 7: telemetria
+// =========================
+print contador_movimento;
+print contador_alertas;
+print temperatura_max;
+print distancia_abertura_portao;
