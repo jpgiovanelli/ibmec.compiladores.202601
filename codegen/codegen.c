@@ -47,6 +47,48 @@ static int sensor_index(CodeGenerator *gen, const char *nome) {
     return -1;
 }
 
+static const char* cache_sensor_var(CodeGenerator *gen, const char *sensor_nome) {
+    int i;
+    for (i = 0; i < gen->cache_sensor_count; i++) {
+        if (strcmp(gen->cache_sensor_nome[i], sensor_nome) == 0) {
+            return gen->cache_sensor_var[i];
+        }
+    }
+    return NULL;
+}
+
+static void cache_sensor_set(CodeGenerator *gen, const char *sensor_nome, const char *var_nome) {
+    int i;
+    for (i = 0; i < gen->cache_sensor_count; i++) {
+        if (strcmp(gen->cache_sensor_nome[i], sensor_nome) == 0) {
+            strncpy(gen->cache_sensor_var[i], var_nome, MAX_NAME_LEN - 1);
+            gen->cache_sensor_var[i][MAX_NAME_LEN - 1] = '\0';
+            return;
+        }
+    }
+    if (gen->cache_sensor_count >= 64) return;
+    strncpy(gen->cache_sensor_nome[gen->cache_sensor_count], sensor_nome, MAX_NAME_LEN - 1);
+    gen->cache_sensor_nome[gen->cache_sensor_count][MAX_NAME_LEN - 1] = '\0';
+    strncpy(gen->cache_sensor_var[gen->cache_sensor_count], var_nome, MAX_NAME_LEN - 1);
+    gen->cache_sensor_var[gen->cache_sensor_count][MAX_NAME_LEN - 1] = '\0';
+    gen->cache_sensor_count++;
+}
+
+static void cache_sensor_remove(CodeGenerator *gen, const char *sensor_nome) {
+    int i;
+    for (i = 0; i < gen->cache_sensor_count; i++) {
+        if (strcmp(gen->cache_sensor_nome[i], sensor_nome) == 0) {
+            int j;
+            for (j = i; j < gen->cache_sensor_count - 1; j++) {
+                strcpy(gen->cache_sensor_nome[j], gen->cache_sensor_nome[j + 1]);
+                strcpy(gen->cache_sensor_var[j], gen->cache_sensor_var[j + 1]);
+            }
+            gen->cache_sensor_count--;
+            return;
+        }
+    }
+}
+
 static int usa_tipo_sensor(CodeGenerator *gen, const char *tipo) {
     int i;
     for (i = 0; i < gen->num_sensores; i++) {
@@ -177,33 +219,99 @@ static void codegen_setup(CodeGenerator *gen, ASTNode *programa) {
     codegen_escrever(gen, "}\n\n");
 }
 
-static void codegen_condicao_expr(CodeGenerator *gen, ASTNode *cond, char *out, size_t out_len) {
+static void codegen_emitir_leitura_sensor(CodeGenerator *gen, ASTNode *cond, const char *var_nome) {
+    int idx = sensor_index(gen, cond->nome);
+    if (idx < 0) return;
+
+    if (strcmp(gen->sensores_tipo[idx], "hcsr04") == 0) {
+        codegen_indentar(gen);
+        codegen_escrever_fmt(gen, "long %s = read_%s_cm();\n", var_nome, cond->nome);
+    } else if (strcmp(gen->sensores_tipo[idx], "dht11") == 0) {
+        codegen_indentar(gen);
+        codegen_escrever_fmt(gen, "float %s = %s_dht.readTemperature();\n", var_nome, cond->nome);
+    } else if (eh_pino_analogico(gen->sensores_pin1[idx])) {
+        codegen_indentar(gen);
+        codegen_escrever_fmt(gen, "int %s = analogRead(%s_pin);\n", var_nome, cond->nome);
+    } else {
+        codegen_indentar(gen);
+        codegen_escrever_fmt(gen, "int %s = digitalRead(%s_pin);\n", var_nome, cond->nome);
+    }
+}
+
+static void codegen_condicao_expr(CodeGenerator *gen, ASTNode *cond, char *out, size_t out_len, int materializar_leitura) {
     int idx = sensor_index(gen, cond->nome);
     int detected = strcmp(cond->valor_comparacao, "detected") == 0 || strcmp(cond->valor_comparacao, "detectado") == 0;
     int not_detected = strcmp(cond->valor_comparacao, "not_detected") == 0 || strcmp(cond->valor_comparacao, "nao_detectado") == 0;
+    char leitura_var[96];
+    const char *cache_var = cache_sensor_var(gen, cond->nome);
+    int usar_cache = cache_var != NULL;
+
+    snprintf(leitura_var, sizeof(leitura_var), "leitura_%s_%d", cond->nome, gen->leitura_counter++);
+    if (usar_cache) {
+        strncpy(leitura_var, cache_var, sizeof(leitura_var) - 1);
+        leitura_var[sizeof(leitura_var) - 1] = '\0';
+        materializar_leitura = 0;
+    }
 
     if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "hcsr04") == 0) {
+        if (materializar_leitura) {
+            codegen_emitir_leitura_sensor(gen, cond, leitura_var);
+        }
         if (detected) {
-            snprintf(out, out_len, "read_%s_cm() > 0", cond->nome);
+            if (usar_cache || materializar_leitura) snprintf(out, out_len, "%s > 0", leitura_var);
+            else snprintf(out, out_len, "read_%s_cm() > 0", cond->nome);
         } else if (not_detected) {
-            snprintf(out, out_len, "read_%s_cm() == 0", cond->nome);
+            if (usar_cache || materializar_leitura) snprintf(out, out_len, "%s == 0", leitura_var);
+            else snprintf(out, out_len, "read_%s_cm() == 0", cond->nome);
         } else {
-            snprintf(out, out_len, "read_%s_cm() %s %s",
-                     cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+            if (usar_cache || materializar_leitura) {
+                snprintf(out, out_len, "%s %s %s",
+                         leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+            } else {
+                snprintf(out, out_len, "read_%s_cm() %s %s",
+                         cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+            }
         }
     } else if (idx >= 0 && strcmp(gen->sensores_tipo[idx], "dht11") == 0) {
-        snprintf(out, out_len, "%s_dht.readTemperature() %s %s",
-                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        if (materializar_leitura) {
+            codegen_emitir_leitura_sensor(gen, cond, leitura_var);
+            snprintf(out, out_len, "!isnan(%s) && %s %s %s",
+                     leitura_var, leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else if (usar_cache) {
+            snprintf(out, out_len, "!isnan(%s) && %s %s %s",
+                     leitura_var, leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else {
+            snprintf(out, out_len, "%s_dht.readTemperature() %s %s",
+                     cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        }
     } else if (detected) {
         snprintf(out, out_len, "digitalRead(%s_pin) == HIGH", cond->nome);
     } else if (not_detected) {
         snprintf(out, out_len, "digitalRead(%s_pin) == LOW", cond->nome);
     } else if (idx >= 0 && eh_pino_analogico(gen->sensores_pin1[idx])) {
-        snprintf(out, out_len, "analogRead(%s_pin) %s %s",
-                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        if (materializar_leitura) {
+            codegen_emitir_leitura_sensor(gen, cond, leitura_var);
+            snprintf(out, out_len, "%s %s %s",
+                     leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else if (usar_cache) {
+            snprintf(out, out_len, "%s %s %s",
+                     leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else {
+            snprintf(out, out_len, "analogRead(%s_pin) %s %s",
+                     cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        }
     } else if (idx >= 0) {
-        snprintf(out, out_len, "digitalRead(%s_pin) %s %s",
-                 cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        if (materializar_leitura) {
+            codegen_emitir_leitura_sensor(gen, cond, leitura_var);
+            snprintf(out, out_len, "%s %s %s",
+                     leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else if (usar_cache) {
+            snprintf(out, out_len, "%s %s %s",
+                     leitura_var, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        } else {
+            snprintf(out, out_len, "digitalRead(%s_pin) %s %s",
+                     cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
+        }
     } else {
         snprintf(out, out_len, "%s %s %s",
                  cond->nome, ast_operador_simbolo(cond->operador), cond->valor_comparacao);
@@ -249,9 +357,24 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *bloco_then = no->filhos[1];
             ASTNode *bloco_else = (no->num_filhos >= 3) ? no->filhos[2] : NULL;
             char cond_expr[256];
+            int idx_cond = sensor_index(gen, cond->nome);
+            int cached_este_no = 0;
 
+            if (idx_cond >= 0 && bloco_else && bloco_else->num_filhos > 0) {
+                ASTNode *primeiro_else = bloco_else->filhos[0];
+                if ((primeiro_else->tipo == NODE_IF_STMT || primeiro_else->tipo == NODE_WHEN_STMT) &&
+                    primeiro_else->num_filhos > 0 &&
+                    strcmp(primeiro_else->filhos[0]->nome, cond->nome) == 0) {
+                    char var_unica[96];
+                    snprintf(var_unica, sizeof(var_unica), "leitura_%s", cond->nome);
+                    codegen_emitir_leitura_sensor(gen, cond, var_unica);
+                    cache_sensor_set(gen, cond->nome, var_unica);
+                    cached_este_no = 1;
+                }
+            }
+
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 1);
             codegen_indentar(gen);
-            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
             codegen_escrever_fmt(gen, "if (%s) {\n", cond_expr);
 
             gen->nivel_indentacao++;
@@ -274,6 +397,9 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
                 codegen_indentar(gen);
                 codegen_escrever(gen, "}\n");
             }
+            if (cached_este_no) {
+                cache_sensor_remove(gen, cond->nome);
+            }
             break;
         }
 
@@ -281,10 +407,12 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *cond = no->filhos[0];
             ASTNode *bloco = no->filhos[1];
             char cond_expr[256];
-            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
             codegen_indentar(gen);
-            codegen_escrever_fmt(gen, "while (%s) {\n", cond_expr);
+            codegen_escrever(gen, "while (1) {\n");
             gen->nivel_indentacao++;
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 1);
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "if (!(%s)) break;\n", cond_expr);
             for (i = 0; i < bloco->num_filhos; i++) {
                 codegen_comando(gen, bloco->filhos[i]);
             }
@@ -300,11 +428,13 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *update = no->filhos[2];
             ASTNode *bloco = no->filhos[3];
             char cond_expr[256];
-            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr));
             codegen_indentar(gen);
-            codegen_escrever_fmt(gen, "for (%s = %s; %s; %s = %s) {\n",
-                                 init->nome, init->expressao, cond_expr, update->nome, update->expressao);
+            codegen_escrever_fmt(gen, "for (%s = %s; ; %s = %s) {\n",
+                                 init->nome, init->expressao, update->nome, update->expressao);
             gen->nivel_indentacao++;
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 1);
+            codegen_indentar(gen);
+            codegen_escrever_fmt(gen, "if (!(%s)) break;\n", cond_expr);
             for (i = 0; i < bloco->num_filhos; i++) {
                 codegen_comando(gen, bloco->filhos[i]);
             }
@@ -355,6 +485,8 @@ CodeGenerator* codegen_criar(void) {
     gen->posicao = 0;
     gen->nivel_indentacao = 0;
     gen->num_sensores = 0;
+    gen->leitura_counter = 0;
+    gen->cache_sensor_count = 0;
 
     return gen;
 }
@@ -373,6 +505,7 @@ void codegen_gerar(CodeGenerator *gen, ASTNode *ast) {
     codegen_escrever(gen, " * Plataforma: Arduino/ESP32\n");
     codegen_escrever(gen, " */\n\n");
     codegen_escrever(gen, "#include <Arduino.h>\n");
+    codegen_escrever(gen, "#include <math.h>\n");
     if (usa_tipo_sensor(gen, "dht11")) {
         codegen_escrever(gen, "#include <DHT.h>\n");
     }

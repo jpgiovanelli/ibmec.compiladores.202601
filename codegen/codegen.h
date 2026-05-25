@@ -23,6 +23,10 @@ typedef struct {
     char sensores_pin1[64][MAX_NAME_LEN];
     char sensores_pin2[64][MAX_NAME_LEN];
     int num_sensores;
+    int leitura_counter;
+    char cache_sensor_nome[64][MAX_NAME_LEN];
+    char cache_sensor_var[64][MAX_NAME_LEN];
+    int cache_sensor_count;
 } CodeGenerator;
 
 /* ---------- Funções Públicas ---------- */
