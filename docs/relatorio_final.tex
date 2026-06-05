@@ -302,6 +302,9 @@ comparações obrigatoriamente numéricas.
 \texttt{!isnan()}.
 \item \textbf{HC-SR04} (\texttt{type hcsr04 trig N echo N}): gera uma
 função auxiliar que dispara o pulso e mede o eco com \texttt{pulseIn}.
+Os pinos \texttt{trig} e \texttt{echo} aceitam tanto pinos digitais
+numéricos quanto pinos analógicos (\texttt{A0}--\texttt{A15}), pois no
+Arduino esses pinos funcionam também como saídas e entradas digitais.
 \end{itemize}
 
 Vale destacar uma nuance de design: as palavras \texttt{type}/\texttt{tipo},
@@ -602,13 +605,17 @@ A tradução de \emph{condições} depende do tipo do sensor: digital com
 \texttt{detected} vira \texttt{digitalRead(pin) == HIGH}; analógico vira
 \texttt{analogRead(pin) op valor}; DHT11 vira
 \texttt{!isnan(leit) \&\& leit op valor}; e HC-SR04 invoca a função
-auxiliar. Os laços \texttt{while} e \texttt{for} adotam o padrão da
-Listagem~\ref{lst:loop}, que reavalia a condição (e, portanto, relê o
-sensor) a cada iteração sem duplicar código.
+auxiliar. Os laços \texttt{while} e \texttt{for} são traduzidos para as formas
+padrão do C, como mostram os exemplos na Listagem~\ref{lst:loop}. A condição
+é reavaliada a cada iteração --- o que implica reler o sensor, se ele
+aparecer na condição --- sem duplicar código.
 
 \begin{lstlisting}[style=csmall,caption={Padrão de geração de laços.},label={lst:loop}]
-while (1) {
-    if (!(condicao)) break;
+while (tentativas_portao < 2) {
+    /* corpo do laco */
+}
+
+for (i = 0; i < 3; i = i + 1) {
     /* corpo do laco */
 }
 \end{lstlisting}
@@ -826,9 +833,11 @@ if (!isnan(leitura_temperatura_quarto) &&
 \subsection{Protótipo físico: montagem e validação}
 
 O código C produzido pelo compilador foi gravado \emph{diretamente} em um
-Arduino Uno (ATMega328P), pela IDE Arduino, sem qualquer modificação
-manual. A Tabela~\ref{tab:hardware} descreve o mapeamento de pinos e
-componentes do protótipo, e a Fig.~\ref{fig:arduino} mostra a montagem.
+Arduino Mega 2560, pela IDE Arduino, sem qualquer modificação manual. Para
+a apresentação em bancada, todos os nove atuadores foram representados por
+LEDs, facilitando a observação visual do comportamento de cada rotina. A
+Tabela~\ref{tab:hardware} descreve o mapeamento de pinos e componentes do
+protótipo, e a Fig.~\ref{fig:arduino} mostra a montagem.
 
 \begin{table}[htbp]
 \caption{Mapeamento de pinos e componentes do protótipo físico}
@@ -838,21 +847,21 @@ componentes do protótipo, e a Fig.~\ref{fig:arduino} mostra a montagem.
 \toprule
 \textbf{Identificador} & \textbf{Componente} & \textbf{Pino} \\
 \midrule
-\texttt{luz\_sala}          & LED / Relé           & 13 \\
+\texttt{luz\_sala}          & LED                  & 13 \\
 \texttt{luz\_corredor}      & LED                  & 12 \\
 \texttt{luz\_jardim}        & LED                  & 11 \\
-\texttt{ventilador\_quarto} & Motor DC             & 10 \\
-\texttt{aquecedor\_quarto}  & Resistor aquecedor   &  9 \\
-\texttt{sirene}             & Buzzer piezoelétrico &  8 \\
-\texttt{bomba\_caixa}       & Microbomba DC        &  7 \\
-\texttt{portao\_motor}      & Servomotor           &  6 \\
-\texttt{fita\_led\_garagem} & Fita de LEDs         &  5 \\
+\texttt{ventilador\_quarto} & LED (representa motor)& 10 \\
+\texttt{aquecedor\_quarto}  & LED (representa resist.) & 9 \\
+\texttt{sirene}             & LED (representa buzzer)  & 8 \\
+\texttt{bomba\_caixa}       & LED (representa bomba)   & 7 \\
+\texttt{portao\_motor}      & LED (representa motor)   & 6 \\
+\texttt{fita\_led\_garagem} & LED                  &  5 \\
 \texttt{movimento\_sala}    & Sensor PIR           &  2 \\
 \texttt{porta\_entrada}     & Reed switch          &  3 \\
 \texttt{temperatura\_quarto}& DHT11                &  4 \\
-\texttt{luminosidade\_jardim}& LDR + resistor      & A0 \\
+\texttt{luminosidade\_jardim}& Potenciômetro       & A0 \\
 \texttt{nivel\_caixa}       & Potenciômetro        & A1 \\
-\texttt{distancia\_garagem} & HC-SR04 (trig/echo)  & 14/15 \\
+\texttt{distancia\_garagem} & HC-SR04 (trig/echo)  & A2/A3 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -861,27 +870,35 @@ componentes do protótipo, e a Fig.~\ref{fig:arduino} mostra a montagem.
 \centerline{%
 \fbox{\parbox{0.9\linewidth}{\centering\vspace{1.8cm}
 \textit{[Inserir foto do protótipo físico montado]}\\
-Arduino Uno + 9 atuadores + 6 sensores\\
+Arduino Mega 2560 + 9 LEDs + 6 sensores\\
 \vspace{1.8cm}}}}
-\caption{Protótipo físico: Arduino Uno executando o código gerado pelo compilador HomeScript a partir de \texttt{casa\_completa\_plus.iot}.}
+\caption{Protótipo físico: Arduino Mega 2560 executando o código gerado pelo compilador HomeScript a partir de \texttt{apresentacao.iot}.}
 \label{fig:arduino}
 \end{figure}
 
-Três aspectos do código gerado foram verificados experimentalmente.
-\textbf{(1)} O protocolo do HC-SR04 (Rotina~6) executou corretamente a
-sequência de disparo e medição; ao aproximar a mão a menos de 35\,cm, o
-\texttt{portao\_motor} acionou dois pulsos de 1.200\,ms separados por
-300\,ms, reproduzindo exatamente o laço \texttt{enquanto}. \textbf{(2)} O
-laço \texttt{para} com o buzzer (Rotina~2) emitiu precisamente 3 pulsos de
-250\,ms ao fechar o \emph{reed switch}, confirmando a tradução correta de
-inicialização, condição e incremento. \textbf{(3)} O controle térmico com
-DHT11 e cache (Rotina~4) impediu o acionamento simultâneo de ventilador e
-aquecedor: entre 23\,°C e 29\,°C ambos permaneceram em \texttt{LOW}; o
-cache garantiu uma única leitura por ciclo. Os dados de telemetria
-enviados por \texttt{Serial.println()} a 9.600 \emph{bauds} confirmaram os
-valores das variáveis a cada ciclo, validando a corretude do código de
-ponta a ponta --- do arquivo \texttt{.iot} ao comportamento físico
-observável.
+Quatro aspectos do código gerado foram verificados experimentalmente.
+\textbf{(1)} O protocolo do HC-SR04 (garagem) executou corretamente a
+sequência de disparo e medição usando os pinos analógicos A2/A3 como
+digitais; ao aproximar a mão ao sensor, o LED de \texttt{portao\_motor}
+acionou dois pulsos de 1.200\,ms separados por 300\,ms, reproduzindo
+exatamente o laço \texttt{while}. \textbf{(2)} O laço \texttt{for} com a
+sirene emitiu precisamente 3 pulsos de 250\,ms ao acionar o reed switch,
+confirmando a tradução correta de inicialização, condição e incremento.
+\textbf{(3)} O controle térmico com DHT11 e cache impediu o acionamento
+simultâneo de ventilador e aquecedor; o cache garantiu uma única leitura
+por ciclo. \textbf{(4)} Durante a validação física, identificou-se que o
+sensor PIR disponível opera com lógica \emph{invertida} (ativo em
+\texttt{LOW}): ao aproximar a mão, o pino lê \texttt{LOW} em vez de
+\texttt{HIGH}. Esse comportamento é capturado na linguagem trocando
+\texttt{detected} por \texttt{not\_detected} na condição do
+\texttt{when}, o que gera \texttt{digitalRead(pin) == LOW} no código
+Arduino. O fato de a correção se limitar a \emph{uma palavra-chave} no
+arquivo \texttt{.iot} --- sem tocar no código C gerado --- ilustra com
+precisão a vantagem de uma DSL: o compilador absorve o detalhe elétrico e
+o código de alto nível permanece legível. Os dados de telemetria enviados
+por \texttt{Serial.println()} a 9.600 \emph{bauds} confirmaram os valores
+das variáveis a cada ciclo, validando a corretude da tradução de ponta a
+ponta --- do arquivo \texttt{.iot} ao comportamento físico observável.
 
 \subsection{Acertos de projeto}
 
@@ -923,15 +940,17 @@ linguagem ainda não possui funções definidas pelo usuário.
 
 Uma limitação particularmente instrutiva diz respeito à verificação de
 conflito de pinos: ela é \emph{puramente lexical}, comparando os pinos como
-\emph{strings}. No cenário de validação, o HC-SR04 usa \texttt{trig 14} e
-\texttt{echo 15}, que no Arduino Uno correspondem fisicamente a
-\texttt{A0} e \texttt{A1} --- pinos já ocupados pelos sensores
-analógicos \texttt{luminosidade\_jardim} (A0) e \texttt{nivel\_caixa} (A1).
-Como ``14'' e ``A0'' são \emph{strings} diferentes, o analisador semântico
-não acusa o conflito, embora ele exista no hardware. Reconhecer esse caso
-exigiria que o compilador modelasse a equivalência elétrica entre numeração
-digital e analógica de cada placa-alvo --- um aprimoramento natural para
-trabalhos futuros. Por fim, executar o compilador como subprocesso é
+\emph{strings}. Se o HC-SR04 fosse declarado com \texttt{trig 14} e
+\texttt{echo 15} em um Arduino Uno, esses pinos corresponderiam fisicamente
+a \texttt{A0} e \texttt{A1} --- potencialmente ocupados por outros sensores
+analógicos. Como ``14'' e ``A0'' são \emph{strings} diferentes, o analisador
+semântico não acusaria o conflito, embora ele existisse no hardware.
+Reconhecer esse caso exigiria que o compilador modelasse a equivalência
+elétrica entre numeração digital e analógica de cada placa-alvo. No protótipo
+da apresentação, o problema foi contornado declarando o sensor diretamente
+como \texttt{type hcsr04 trig A2 echo A3}, tornando a intenção explícita e
+evitando qualquer ambiguidade --- o que também motivou a correção no
+\emph{parser} para aceitar pinos analógicos em declarações HC-SR04. Por fim, executar o compilador como subprocesso é
 simples e adequado ao contexto acadêmico, mas exigiria isolamento adicional
 em um ambiente de produção compartilhado.
 
