@@ -127,20 +127,20 @@ function validarCodigoPorPlaca(codigo, board) {
     if (mHcsr) {
       const trig = mHcsr[1]
       const echo = mHcsr[2]
-      if (isAnalog(trig) || !digitalInRange(trig)) {
+      if (!digitalInRange(trig) && !(isAnalog(trig) && analogInRange(trig))) {
         erros.push({
           fase: 'validação-board',
           linha: idx + 1,
           coluna: 1,
-          mensagem: `HC-SR04 trig deve usar pino digital válido da placa ${boardPins.label}: ${trig}`
+          mensagem: `HC-SR04 trig deve usar pino válido da placa ${boardPins.label}: ${trig}`
         })
       }
-      if (isAnalog(echo) || !digitalInRange(echo)) {
+      if (!digitalInRange(echo) && !(isAnalog(echo) && analogInRange(echo))) {
         erros.push({
           fase: 'validação-board',
           linha: idx + 1,
           coluna: 1,
-          mensagem: `HC-SR04 echo deve usar pino digital válido da placa ${boardPins.label}: ${echo}`
+          mensagem: `HC-SR04 echo deve usar pino válido da placa ${boardPins.label}: ${echo}`
         })
       }
       return

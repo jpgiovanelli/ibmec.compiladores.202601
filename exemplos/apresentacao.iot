@@ -1,0 +1,99 @@
+device luz_sala pin 13;
+device luz_corredor pin 12;
+device luz_jardim pin 11;
+device ventilador_quarto pin 10;
+device aquecedor_quarto pin 9;
+device sirene pin 8;
+device bomba_caixa pin 7;
+device portao_motor pin 6;
+device fita_led_garagem pin 5;
+
+sensor movimento_sala pin 2;
+sensor porta_entrada pin 3;
+sensor luminosidade_jardim pin A0;
+sensor nivel_caixa pin A1;
+sensor temperatura_quarto type dht11 pin 4;
+sensor distancia_garagem type hcsr04 trig A2 echo A3;
+
+let limite_luz_jardim = 500;
+let temperatura_max = 30;
+let temperatura_min = 22;
+let nivel_minimo_caixa = 380;
+let distancia_abertura_portao = 10;
+let contador_alertas = 0;
+let contador_movimento = 0;
+let i = 0;
+let tentativas_portao = 0;
+
+when movimento_sala == not_detected {
+    contador_movimento = contador_movimento + 1;
+    turn luz_sala on;
+    wait 3000;
+}
+else {
+    turn luz_sala off;
+}
+
+when porta_entrada == not_detected {
+    contador_alertas = contador_alertas + 1;
+    turn luz_corredor on;
+    for i = 0; i < 3; i = i + 1 {
+        turn sirene on;
+        wait 250;
+        turn sirene off;
+        wait 250;
+    }
+}
+else {
+    turn luz_corredor off;
+}
+
+if luminosidade_jardim < limite_luz_jardim {
+    turn luz_jardim on;
+}
+else {
+    turn luz_jardim off;
+}
+
+if temperatura_quarto > temperatura_max {
+    turn ventilador_quarto on;
+    turn aquecedor_quarto off;
+}
+else {
+    if temperatura_quarto < temperatura_min {
+        turn aquecedor_quarto on;
+        turn ventilador_quarto off;
+    }
+    else {
+        turn ventilador_quarto off;
+        turn aquecedor_quarto off;
+    }
+}
+
+if nivel_caixa < nivel_minimo_caixa {
+    turn bomba_caixa on;
+}
+else {
+    turn bomba_caixa off;
+}
+
+if distancia_garagem < distancia_abertura_portao {
+    tentativas_portao = 0;
+    while tentativas_portao < 2 {
+        turn portao_motor on;
+        turn fita_led_garagem on;
+        wait 1200;
+        turn portao_motor off;
+        wait 300;
+        tentativas_portao = tentativas_portao + 1;
+    }
+}
+else {
+    turn portao_motor off;
+    turn fita_led_garagem off;
+}
+
+print contador_movimento;
+print contador_alertas;
+
+wait 500;

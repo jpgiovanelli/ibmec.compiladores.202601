@@ -407,12 +407,10 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *cond = no->filhos[0];
             ASTNode *bloco = no->filhos[1];
             char cond_expr[256];
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 0);
             codegen_indentar(gen);
-            codegen_escrever(gen, "while (1) {\n");
+            codegen_escrever_fmt(gen, "while (%s) {\n", cond_expr);
             gen->nivel_indentacao++;
-            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 1);
-            codegen_indentar(gen);
-            codegen_escrever_fmt(gen, "if (!(%s)) break;\n", cond_expr);
             for (i = 0; i < bloco->num_filhos; i++) {
                 codegen_comando(gen, bloco->filhos[i]);
             }
@@ -428,13 +426,11 @@ static void codegen_comando(CodeGenerator *gen, ASTNode *no) {
             ASTNode *update = no->filhos[2];
             ASTNode *bloco = no->filhos[3];
             char cond_expr[256];
+            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 0);
             codegen_indentar(gen);
-            codegen_escrever_fmt(gen, "for (%s = %s; ; %s = %s) {\n",
-                                 init->nome, init->expressao, update->nome, update->expressao);
+            codegen_escrever_fmt(gen, "for (%s = %s; %s; %s = %s) {\n",
+                                 init->nome, init->expressao, cond_expr, update->nome, update->expressao);
             gen->nivel_indentacao++;
-            codegen_condicao_expr(gen, cond, cond_expr, sizeof(cond_expr), 1);
-            codegen_indentar(gen);
-            codegen_escrever_fmt(gen, "if (!(%s)) break;\n", cond_expr);
             for (i = 0; i < bloco->num_filhos; i++) {
                 codegen_comando(gen, bloco->filhos[i]);
             }

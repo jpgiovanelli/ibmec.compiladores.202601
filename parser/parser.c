@@ -254,8 +254,8 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
                 return NULL;
             }
             parser_avancar(parser);
-            if (!parser_verificar(parser, TOKEN_NUMBER)) {
-                parser_registrar_erro(parser, "Pino trig (digital) esperado para sensor hcsr04");
+            if (!parser_verificar(parser, TOKEN_NUMBER) && !parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+                parser_registrar_erro(parser, "Pino trig esperado para sensor hcsr04");
                 ast_destruir(no);
                 return NULL;
             }
@@ -268,8 +268,8 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
                 return NULL;
             }
             parser_avancar(parser);
-            if (!parser_verificar(parser, TOKEN_NUMBER)) {
-                parser_registrar_erro(parser, "Pino echo (digital) esperado para sensor hcsr04");
+            if (!parser_verificar(parser, TOKEN_NUMBER) && !parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+                parser_registrar_erro(parser, "Pino echo esperado para sensor hcsr04");
                 ast_destruir(no);
                 return NULL;
             }
