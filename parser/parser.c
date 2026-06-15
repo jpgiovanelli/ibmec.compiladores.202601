@@ -31,6 +31,11 @@ static int parser_verificar(Parser *parser, TokenType tipo) {
     return parser->token_atual.tipo == tipo;
 }
 
+static int parser_ident_igual(Parser *parser, const char *texto) {
+    return parser->token_atual.tipo == TOKEN_IDENTIFIER &&
+           strcmp(parser->token_atual.valor, texto) == 0;
+}
+
 static int parser_consumir(Parser *parser, TokenType tipo, const char *mensagem_erro) {
     if (parser->token_atual.tipo == tipo) {
         parser_avancar(parser);
@@ -207,19 +212,76 @@ static ASTNode* parser_sensor_decl(Parser *parser) {
     strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
     parser_avancar(parser);
 
-    if (!parser_consumir(parser, TOKEN_PIN, "Palavra 'pin' esperada")) {
-        ast_destruir(no);
-        return NULL;
-    }
+    if (parser_verificar(parser, TOKEN_PIN)) {
+        parser_avancar(parser);
 
-    if (parser_verificar(parser, TOKEN_NUMBER)) {
-        strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+        if (parser_verificar(parser, TOKEN_NUMBER) || parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+            strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+        } else {
+            parser_registrar_erro(parser, "Número do pino esperado");
+            ast_destruir(no);
+            return NULL;
+        }
+    } else if (parser_ident_igual(parser, "type") || parser_ident_igual(parser, "tipo")) {
         parser_avancar(parser);
-    } else if (parser_verificar(parser, TOKEN_ANALOG_PIN)) {
-        strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+
+        if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
+            parser_registrar_erro(parser, "Tipo de sensor esperado após 'type'");
+            ast_destruir(no);
+            return NULL;
+        }
+        strncpy(no->sensor_tipo, parser->token_atual.valor, MAX_NAME_LEN - 1);
         parser_avancar(parser);
+
+        if (strcmp(no->sensor_tipo, "dht11") == 0) {
+            if (!parser_consumir(parser, TOKEN_PIN, "Palavra 'pin' esperada para sensor dht11")) {
+                ast_destruir(no);
+                return NULL;
+            }
+            if (parser_verificar(parser, TOKEN_NUMBER)) {
+                strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+                parser_avancar(parser);
+            } else {
+                parser_registrar_erro(parser, "Pino digital esperado para sensor dht11");
+                ast_destruir(no);
+                return NULL;
+            }
+        } else if (strcmp(no->sensor_tipo, "hcsr04") == 0) {
+            if (!parser_ident_igual(parser, "trig") && !parser_ident_igual(parser, "gatilho")) {
+                parser_registrar_erro(parser, "Palavra 'trig'/'gatilho' esperada para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            parser_avancar(parser);
+            if (!parser_verificar(parser, TOKEN_NUMBER) && !parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+                parser_registrar_erro(parser, "Pino trig esperado para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            strncpy(no->pino, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+
+            if (!parser_ident_igual(parser, "echo") && !parser_ident_igual(parser, "eco")) {
+                parser_registrar_erro(parser, "Palavra 'echo'/'eco' esperada para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            parser_avancar(parser);
+            if (!parser_verificar(parser, TOKEN_NUMBER) && !parser_verificar(parser, TOKEN_ANALOG_PIN)) {
+                parser_registrar_erro(parser, "Pino echo esperado para sensor hcsr04");
+                ast_destruir(no);
+                return NULL;
+            }
+            strncpy(no->pino_secundario, parser->token_atual.valor, MAX_NAME_LEN - 1);
+            parser_avancar(parser);
+        } else {
+            parser_registrar_erro(parser, "Tipo de sensor desconhecido (suportados: dht11, hcsr04)");
+            ast_destruir(no);
+            return NULL;
+        }
     } else {
-        parser_registrar_erro(parser, "Número do pino esperado");
+        parser_registrar_erro(parser, "Declaração de sensor inválida: esperado 'pin' ou 'type'");
         ast_destruir(no);
         return NULL;
     }
@@ -291,6 +353,39 @@ static ASTNode* parser_assign_cmd(Parser *parser) {
     strncpy(no->expressao, expr, MAX_EXPR_LEN - 1);
 
     if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após atribuição")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    return no;
+}
+
+static ASTNode* parser_assign_core(Parser *parser, int exigir_pontovirgula) {
+    ASTNode *no = ast_criar_no(NODE_ASSIGN_CMD);
+    char expr[MAX_EXPR_LEN];
+    ast_marcar_posicao(no, parser);
+
+    if (!parser_verificar(parser, TOKEN_IDENTIFIER)) {
+        parser_registrar_erro(parser, "Nome da variável esperado na atribuição");
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->nome, parser->token_atual.valor, MAX_NAME_LEN - 1);
+    parser_avancar(parser);
+
+    if (!parser_consumir(parser, TOKEN_OP_ASSIGN, "'=' esperado na atribuição")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    if (!parser_expressao(parser, expr, sizeof(expr))) {
+        ast_destruir(no);
+        return NULL;
+    }
+    strncpy(no->expressao, expr, MAX_EXPR_LEN - 1);
+
+    if (exigir_pontovirgula &&
+        !parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após atribuição")) {
         ast_destruir(no);
         return NULL;
     }
@@ -485,6 +580,85 @@ static ASTNode* parser_if_stmt(Parser *parser) {
     }
     ast_adicionar_filho(no, bloco);
 
+    if (parser_verificar(parser, TOKEN_ELSE)) {
+        parser_avancar(parser);
+        bloco = parser_bloco(parser);
+        if (!bloco) {
+            ast_destruir(no);
+            return NULL;
+        }
+        ast_adicionar_filho(no, bloco);
+    }
+
+    return no;
+}
+
+static ASTNode* parser_while_stmt(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_WHILE_STMT);
+    ast_marcar_posicao(no, parser);
+
+    parser_avancar(parser);
+
+    ASTNode *cond = parser_condicao(parser);
+    if (!cond) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, cond);
+
+    ASTNode *bloco = parser_bloco(parser);
+    if (!bloco) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, bloco);
+
+    return no;
+}
+
+static ASTNode* parser_for_stmt(Parser *parser) {
+    ASTNode *no = ast_criar_no(NODE_FOR_STMT);
+    ASTNode *init;
+    ASTNode *cond;
+    ASTNode *update;
+    ASTNode *bloco;
+    ast_marcar_posicao(no, parser);
+
+    parser_avancar(parser);
+
+    init = parser_assign_core(parser, 1);
+    if (!init) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, init);
+
+    cond = parser_condicao(parser);
+    if (!cond) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, cond);
+
+    if (!parser_consumir(parser, TOKEN_SEMICOLON, "';' esperado após condição do for")) {
+        ast_destruir(no);
+        return NULL;
+    }
+
+    update = parser_assign_core(parser, 0);
+    if (!update) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, update);
+
+    bloco = parser_bloco(parser);
+    if (!bloco) {
+        ast_destruir(no);
+        return NULL;
+    }
+    ast_adicionar_filho(no, bloco);
+
     return no;
 }
 
@@ -507,6 +681,16 @@ static ASTNode* parser_when_stmt(Parser *parser) {
         return NULL;
     }
     ast_adicionar_filho(no, bloco);
+
+    if (parser_verificar(parser, TOKEN_ELSE)) {
+        parser_avancar(parser);
+        bloco = parser_bloco(parser);
+        if (!bloco) {
+            ast_destruir(no);
+            return NULL;
+        }
+        ast_adicionar_filho(no, bloco);
+    }
 
     return no;
 }
@@ -534,8 +718,16 @@ static ASTNode* parser_statement(Parser *parser) {
             return parser_wait_cmd(parser);
         case TOKEN_IF:
             return parser_if_stmt(parser);
+        case TOKEN_FOR:
+            return parser_for_stmt(parser);
+        case TOKEN_WHILE:
+            return parser_while_stmt(parser);
         case TOKEN_WHEN:
             return parser_when_stmt(parser);
+        case TOKEN_ELSE:
+            parser_registrar_erro(parser, "Bloco 'else/senao' sem if/when correspondente");
+            parser_avancar(parser);
+            return NULL;
         case TOKEN_ERROR:
             parser_registrar_erro(parser, "Token inválido encontrado");
             parser_avancar(parser);

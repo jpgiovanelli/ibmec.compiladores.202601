@@ -20,6 +20,9 @@ ASTNode* ast_criar_no(NodeType tipo) {
     no->coluna = 0;
     no->nome[0] = '\0';
     no->pino[0] = '\0';
+    no->pino_secundario[0] = '\0';
+    strncpy(no->sensor_tipo, "generic", MAX_NAME_LEN - 1);
+    no->sensor_tipo[MAX_NAME_LEN - 1] = '\0';
     no->operador = OP_EQ;
     no->valor_comparacao[0] = '\0';
     no->estado = STATE_ON;
@@ -56,6 +59,8 @@ const char* ast_tipo_nome(NodeType tipo) {
         case NODE_TURN_CMD:     return "TurnCommand";
         case NODE_WAIT_CMD:     return "WaitCommand";
         case NODE_IF_STMT:      return "IfStatement";
+        case NODE_FOR_STMT:     return "ForStatement";
+        case NODE_WHILE_STMT:   return "WhileStatement";
         case NODE_WHEN_STMT:    return "WhenStatement";
         case NODE_BLOCK:        return "Block";
         case NODE_CONDITION:    return "Condition";
@@ -104,7 +109,13 @@ void ast_imprimir(ASTNode *no, int nivel) {
             printf(" (nome: %s, pino: %s)\n", no->nome, no->pino);
             break;
         case NODE_SENSOR_DECL:
-            printf(" (nome: %s, pino: %s)\n", no->nome, no->pino);
+            if (no->pino_secundario[0]) {
+                printf(" (nome: %s, tipo: %s, trig: %s, echo: %s)\n",
+                       no->nome, no->sensor_tipo, no->pino, no->pino_secundario);
+            } else {
+                printf(" (nome: %s, tipo: %s, pino: %s)\n",
+                       no->nome, no->sensor_tipo, no->pino);
+            }
             break;
         case NODE_TURN_CMD:
             printf(" (dispositivo: %s, estado: %s)\n",

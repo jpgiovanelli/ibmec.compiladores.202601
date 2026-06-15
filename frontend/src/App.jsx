@@ -69,6 +69,107 @@ when porta == detected {
 /* ===== API helper ===== */
 const API_URL = 'http://localhost:8000'
 let homescriptConfigured = false
+const BOARD_OPTIONS = {
+  uno: {
+    label: 'Arduino UNO',
+    digitalPins: Array.from({ length: 14 }, (_, i) => String(i)),
+    analogPins: Array.from({ length: 6 }, (_, i) => `A${i}`)
+  },
+  mega2560: {
+    label: 'Arduino Mega 2560',
+    digitalPins: Array.from({ length: 54 }, (_, i) => String(i)),
+    analogPins: Array.from({ length: 16 }, (_, i) => `A${i}`)
+  }
+}
+
+function validarCodigoPorPlaca(codigo, board) {
+  const boardPins = BOARD_OPTIONS[board]
+  const linhas = (codigo || '').split('\n')
+  const erros = []
+
+  const isAnalog = (pin) => /^A\d+$/i.test(pin || '')
+  const analogInRange = (pin) => boardPins.analogPins.includes(String(pin || '').toUpperCase())
+  const digitalInRange = (pin) => boardPins.digitalPins.includes(String(pin || ''))
+
+  linhas.forEach((linha, idx) => {
+    const line = linha.trim()
+    if (!line || line.startsWith('//')) return
+
+    const mDevice = line.match(/^device\s+[a-zA-Z_][a-zA-Z0-9_]*\s+pin\s+([A-Za-z0-9]+)\s*;?$/i)
+    if (mDevice) {
+      const pin = mDevice[1]
+      if (isAnalog(pin) || !digitalInRange(pin)) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `Device deve usar pino digital válido da placa ${boardPins.label}: ${pin}`
+        })
+      }
+      return
+    }
+
+    const mDht = line.match(/^sensor\s+[a-zA-Z_][a-zA-Z0-9_]*\s+type\s+dht11\s+pin\s+([A-Za-z0-9]+)\s*;?$/i)
+    if (mDht) {
+      const pin = mDht[1]
+      if (isAnalog(pin) || !digitalInRange(pin)) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `Sensor DHT11 deve usar pino digital válido da placa ${boardPins.label}: ${pin}`
+        })
+      }
+      return
+    }
+
+    const mHcsr = line.match(/^sensor\s+[a-zA-Z_][a-zA-Z0-9_]*\s+type\s+hcsr04\s+trig\s+([A-Za-z0-9]+)\s+echo\s+([A-Za-z0-9]+)\s*;?$/i)
+    if (mHcsr) {
+      const trig = mHcsr[1]
+      const echo = mHcsr[2]
+      if (!digitalInRange(trig) && !(isAnalog(trig) && analogInRange(trig))) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `HC-SR04 trig deve usar pino válido da placa ${boardPins.label}: ${trig}`
+        })
+      }
+      if (!digitalInRange(echo) && !(isAnalog(echo) && analogInRange(echo))) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `HC-SR04 echo deve usar pino válido da placa ${boardPins.label}: ${echo}`
+        })
+      }
+      return
+    }
+
+    const mSensorGeneric = line.match(/^sensor\s+[a-zA-Z_][a-zA-Z0-9_]*\s+pin\s+([A-Za-z0-9]+)\s*;?$/i)
+    if (mSensorGeneric) {
+      const pin = mSensorGeneric[1]
+      if (isAnalog(pin) && !analogInRange(pin)) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `Pino analógico fora da faixa da placa ${boardPins.label}: ${pin}`
+        })
+      }
+      if (!isAnalog(pin) && !digitalInRange(pin)) {
+        erros.push({
+          fase: 'validação-board',
+          linha: idx + 1,
+          coluna: 1,
+          mensagem: `Pino digital fora da faixa da placa ${boardPins.label}: ${pin}`
+        })
+      }
+    }
+  })
+
+  return { ok: erros.length === 0, erros }
+}
 
 function configurarHomeScript(monaco) {
   if (homescriptConfigured) return
@@ -80,8 +181,8 @@ function configurarHomeScript(monaco) {
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
-        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|when|detected|not_detected)\b/, 'keyword'],
-        [/\b(dispositivo|pino|ligar|desligar|esperar|se|quando|detectado|nao_detectado)\b/, 'keyword'],
+        [/\b(device|sensor|pin|let|print|turn|on|off|wait|if|else|for|while|when|detected|not_detected|type|trig|echo)\b/, 'keyword'],
+        [/\b(dispositivo|pino|ligar|desligar|esperar|se|senao|para|enquanto|quando|detectado|nao_detectado|tipo|gatilho|eco)\b/, 'keyword'],
         [/\bA[0-9]+\b/, 'number'],
         [/\b[0-9]+\b/, 'number'],
         [/[{}()[\]]/, '@brackets'],
@@ -144,12 +245,25 @@ function configurarHomeScript(monaco) {
         { label: 'device', insertText: 'device ${1:nome} pin ${2:13};', detail: 'Declarar dispositivo', kind: k.Keyword, insertTextRules: snippet },
         { label: 'dispositivo', insertText: 'dispositivo ${1:nome} pino ${2:13};', detail: 'Declarar dispositivo (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
         { label: 'sensor', insertText: 'sensor ${1:nome} pin ${2:A0};', detail: 'Declarar sensor', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'sensor dht11', insertText: 'sensor ${1:temperatura} type dht11 pin ${2:2};', detail: 'Sensor DHT11', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor hcsr04', insertText: 'sensor ${1:distancia} type hcsr04 trig ${2:8} echo ${3:9};', detail: 'Sensor HC-SR04', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor dht11 (PT-BR)', insertText: 'sensor ${1:temperatura} tipo dht11 pino ${2:2};', detail: 'Sensor DHT11 (PT-BR)', kind: k.Snippet, insertTextRules: snippet },
+        { label: 'sensor hcsr04 (PT-BR)', insertText: 'sensor ${1:distancia} tipo hcsr04 gatilho ${2:8} eco ${3:9};', detail: 'Sensor HC-SR04 (PT-BR)', kind: k.Snippet, insertTextRules: snippet },
         { label: 'pin', insertText: 'pin', detail: 'Palavra-chave de pino (EN)', kind: k.Keyword },
         { label: 'pino', insertText: 'pino', detail: 'Palavra-chave de pino (PT-BR)', kind: k.Keyword },
+        { label: 'type', insertText: 'type', detail: 'Tipo do sensor (EN)', kind: k.Keyword },
+        { label: 'tipo', insertText: 'tipo', detail: 'Tipo do sensor (PT-BR)', kind: k.Keyword },
+        { label: 'trig', insertText: 'trig', detail: 'Pino trigger do HC-SR04 (EN)', kind: k.Keyword },
+        { label: 'gatilho', insertText: 'gatilho', detail: 'Pino trigger do HC-SR04 (PT-BR)', kind: k.Keyword },
+        { label: 'echo', insertText: 'echo', detail: 'Pino echo do HC-SR04 (EN)', kind: k.Keyword },
+        { label: 'eco', insertText: 'eco', detail: 'Pino echo do HC-SR04 (PT-BR)', kind: k.Keyword },
         { label: 'let', insertText: 'let ${1:variavel} = ${2:0};', detail: 'Declarar variável', kind: k.Keyword, insertTextRules: snippet },
         { label: 'turn on', insertText: 'turn ${1:dispositivo} on;', detail: 'Ligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'turn off', insertText: 'turn ${1:dispositivo} off;', detail: 'Desligar dispositivo', kind: k.Snippet, insertTextRules: snippet },
         { label: 'when', insertText: 'when ${1:sensor} == ${2:detected} {\n\t$0\n}', detail: 'Regra when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'else', insertText: 'else {\n\t$0\n}', detail: 'Bloco else', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'while', insertText: 'while ${1:contador} < ${2:10} {\n\t$0\n}', detail: 'Laço while', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'for', insertText: 'for ${1:i} = ${2:0}; ${1:i} < ${3:10}; ${1:i} = ${1:i} + 1 {\n\t$0\n}', detail: 'Laço for', kind: k.Keyword, insertTextRules: snippet },
         { label: 'if', insertText: 'if ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Condição if', kind: k.Keyword, insertTextRules: snippet },
         { label: 'wait', insertText: 'wait ${1:1000};', detail: 'Aguardar em ms', kind: k.Keyword, insertTextRules: snippet },
         { label: 'print', insertText: 'print ${1:valor};', detail: 'Impressão serial', kind: k.Keyword, insertTextRules: snippet },
@@ -161,6 +275,9 @@ function configurarHomeScript(monaco) {
         { label: 'desligar', insertText: 'desligar ${1:dispositivo};', detail: 'Atalho PT-BR para desligar', kind: k.Keyword, insertTextRules: snippet },
         { label: 'esperar', insertText: 'esperar ${1:1000};', detail: 'Atalho PT-BR para wait', kind: k.Keyword, insertTextRules: snippet },
         { label: 'quando', insertText: 'quando ${1:sensor} == ${2:detectado} {\n\t$0\n}', detail: 'Atalho PT-BR para when', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'senao', insertText: 'senao {\n\t$0\n}', detail: 'Bloco else (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'enquanto', insertText: 'enquanto ${1:contador} < ${2:10} {\n\t$0\n}', detail: 'Laço while (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
+        { label: 'para', insertText: 'para ${1:i} = ${2:0}; ${1:i} < ${3:10}; ${1:i} = ${1:i} + 1 {\n\t$0\n}', detail: 'Laço for (PT-BR)', kind: k.Keyword, insertTextRules: snippet },
         { label: 'se', insertText: 'se ${1:sensor} > ${2:0} {\n\t$0\n}', detail: 'Atalho PT-BR para if', kind: k.Keyword, insertTextRules: snippet }
       ].map((item) => ({ ...item, range }))
 
@@ -695,22 +812,93 @@ function ExecutionTraceView({ codigo, resultado }) {
 
 /* ===== Componente: VisualBuilder ===== */
 function VisualBuilder({ onGenerate }) {
-  const [devices, setDevices] = useState([{ nome: '', pino: '', tipo: 'device' }])
-  const [regras, setRegras] = useState([{ gatilho: '', operador: '==', valor: 'detected', acao: '', estado: 'on', wait: '' }])
+  const [board, setBoard] = useState('uno')
+  const [devices, setDevices] = useState([{
+    nome: '',
+    pino: '',
+    tipo: 'device',
+    sensorTipo: 'generic',
+    trig: '',
+    echo: ''
+  }])
+  const [regras, setRegras] = useState([{
+    gatilho: '',
+    operador: '==',
+    valor: 'detected',
+    acao: '',
+    estado: 'on',
+    wait: '',
+    usarElse: false,
+    acaoElse: '',
+    estadoElse: 'off',
+    waitElse: ''
+  }])
 
-  const addDevice = () => setDevices([...devices, { nome: '', pino: '', tipo: 'device' }])
+  const addDevice = () => setDevices([...devices, {
+    nome: '',
+    pino: '',
+    tipo: 'device',
+    sensorTipo: 'generic',
+    trig: '',
+    echo: ''
+  }])
   const removeDevice = (i) => setDevices(devices.filter((_, idx) => idx !== i))
   const updateDevice = (i, field, val) => {
     const updated = [...devices]
-    updated[i] = { ...updated[i], [field]: val }
+    const current = { ...updated[i], [field]: val }
+    if (field === 'tipo' && val === 'device') {
+      current.sensorTipo = 'generic'
+      current.trig = ''
+      current.echo = ''
+    }
+    if (field === 'sensorTipo' && val !== 'hcsr04') {
+      current.trig = ''
+      current.echo = ''
+    }
+    if (field === 'sensorTipo') {
+      current.pino = ''
+    }
+    updated[i] = current
     setDevices(updated)
   }
 
-  const addRegra = () => setRegras([...regras, { gatilho: '', operador: '==', valor: 'detected', acao: '', estado: 'on', wait: '' }])
+  const addRegra = () => setRegras([...regras, {
+    gatilho: '',
+    operador: '==',
+    valor: 'detected',
+    acao: '',
+    estado: 'on',
+    wait: '',
+    usarElse: false,
+    acaoElse: '',
+    estadoElse: 'off',
+    waitElse: ''
+  }])
   const removeRegra = (i) => setRegras(regras.filter((_, idx) => idx !== i))
   const updateRegra = (i, field, val) => {
     const updated = [...regras]
-    updated[i] = { ...updated[i], [field]: val }
+    const current = { ...updated[i], [field]: val }
+
+    if (field === 'gatilho') {
+      const sensor = devices.find((d) => d.tipo === 'sensor' && d.nome === val)
+      if (sensor) {
+        if (sensor.sensorTipo === 'dht11' || sensor.sensorTipo === 'hcsr04' || sensor.sensorTipo === 'generic_analog') {
+          current.operador = current.operador === '==' || current.operador === '!=' ? '>' : current.operador
+          current.valor = sensor.sensorTipo === 'dht11' ? '30' : '20'
+        } else {
+          current.operador = '=='
+          current.valor = 'detected'
+        }
+      }
+    }
+
+    if (field === 'operador' && (val === '>' || val === '<' || val === '>=' || val === '<=')) {
+      if (current.valor === 'detected' || current.valor === 'not_detected') {
+        current.valor = '20'
+      }
+    }
+
+    updated[i] = current
     setRegras(updated)
   }
 
@@ -718,8 +906,16 @@ function VisualBuilder({ onGenerate }) {
     let code = '// Código gerado pelo HomeScript Visual Builder\n'
 
     devices.forEach(d => {
-      if (d.nome && d.pino) {
+      if (d.tipo === 'device' && d.nome && d.pino) {
         code += `${d.tipo} ${d.nome} pin ${d.pino};\n`
+      } else if (d.tipo === 'sensor' && d.nome) {
+        if (d.sensorTipo === 'hcsr04' && d.trig && d.echo) {
+          code += `sensor ${d.nome} type hcsr04 trig ${d.trig} echo ${d.echo};\n`
+        } else if (d.sensorTipo === 'dht11' && d.pino) {
+          code += `sensor ${d.nome} type dht11 pin ${d.pino};\n`
+        } else if ((d.sensorTipo === 'generic' || d.sensorTipo === 'generic_analog') && d.pino) {
+          code += `sensor ${d.nome} pin ${d.pino};\n`
+        }
       }
     })
 
@@ -732,7 +928,17 @@ function VisualBuilder({ onGenerate }) {
         if (r.wait) {
           code += `    wait ${r.wait};\n`
         }
-        code += '}\n\n'
+        code += '}'
+        if (r.usarElse && r.acaoElse) {
+          code += ' else {\n'
+          code += `    turn ${r.acaoElse} ${r.estadoElse};\n`
+          if (r.waitElse) {
+            code += `    wait ${r.waitElse};\n`
+          }
+          code += '}\n\n'
+        } else {
+          code += '\n\n'
+        }
       }
     })
 
@@ -740,13 +946,42 @@ function VisualBuilder({ onGenerate }) {
   }
 
   const sensorNames = devices.filter(d => d.tipo === 'sensor' && d.nome).map(d => d.nome)
+  const sensorByName = Object.fromEntries(devices.filter(d => d.tipo === 'sensor' && d.nome).map(d => [d.nome, d]))
   const deviceNames = devices.filter(d => d.tipo === 'device' && d.nome).map(d => d.nome)
+  const boardPins = BOARD_OPTIONS[board]
+
+  useEffect(() => {
+    setDevices((prev) => prev.map((d) => {
+      if (d.tipo === 'device') {
+        return boardPins.digitalPins.includes(d.pino) ? d : { ...d, pino: '' }
+      }
+      if (d.sensorTipo === 'hcsr04') {
+        return {
+          ...d,
+          trig: boardPins.digitalPins.includes(d.trig) ? d.trig : '',
+          echo: boardPins.digitalPins.includes(d.echo) ? d.echo : ''
+        }
+      }
+      const allowedPins = d.sensorTipo === 'generic_analog' ? boardPins.analogPins : boardPins.digitalPins
+      return allowedPins.includes(d.pino) ? d : { ...d, pino: '' }
+    }))
+  }, [board, boardPins.analogPins, boardPins.digitalPins])
 
   return (
     <div className="visual-builder">
       {/* Dispositivos */}
       <div className="builder-section">
         <div className="builder-section-title">📟 Dispositivos e Sensores</div>
+        <div className="rule-card" style={{ marginBottom: 12 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Placa alvo</span>
+          <select className="builder-select" value={board} onChange={e => setBoard(e.target.value)}>
+            <option value="uno">Arduino UNO</option>
+            <option value="mega2560">Arduino Mega 2560</option>
+          </select>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            Analógicos: {boardPins.analogPins.join(', ')}
+          </span>
+        </div>
         {devices.map((d, i) => (
           <div key={i} className="rule-card">
             <select className="builder-select" value={d.tipo} onChange={e => updateDevice(i, 'tipo', e.target.value)}>
@@ -755,15 +990,60 @@ function VisualBuilder({ onGenerate }) {
             </select>
             <input className="builder-input" placeholder="Nome (ex: luz)" value={d.nome}
               onChange={e => updateDevice(i, 'nome', e.target.value)} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
-            <input className="builder-input" placeholder="Pino (ex: 13)" value={d.pino}
-              onChange={e => updateDevice(i, 'pino', e.target.value)} style={{ width: 100 }} />
+            {d.tipo === 'device' && (
+              <>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
+                <select className="builder-select" value={d.pino} onChange={e => updateDevice(i, 'pino', e.target.value)}>
+                  <option value="">Selecionar pino...</option>
+                  {boardPins.digitalPins.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
+                </select>
+              </>
+            )}
+            {d.tipo === 'sensor' && (
+              <>
+                <select
+                  className="builder-select"
+                  value={d.sensorTipo}
+                  onChange={e => updateDevice(i, 'sensorTipo', e.target.value)}
+                >
+                  <option value="generic">Sensor Digital (detected/not_detected)</option>
+                  <option value="generic_analog">Sensor Analógico (valor numérico)</option>
+                  <option value="dht11">DHT11 (temperatura)</option>
+                  <option value="hcsr04">HC-SR04 (distância)</option>
+                </select>
+                {d.sensorTipo !== 'hcsr04' && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>pin</span>
+                    <select className="builder-select" value={d.pino} onChange={e => updateDevice(i, 'pino', e.target.value)}>
+                      <option value="">Selecionar pino...</option>
+                      {(d.sensorTipo === 'generic_analog' ? boardPins.analogPins : boardPins.digitalPins).map((pin) => (
+                        <option key={pin} value={pin}>{pin}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                {d.sensorTipo === 'hcsr04' && (
+                  <>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>trig</span>
+                    <select className="builder-select" value={d.trig} onChange={e => updateDevice(i, 'trig', e.target.value)} style={{ width: 100 }}>
+                      <option value="">Trig...</option>
+                      {boardPins.digitalPins.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
+                    </select>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>echo</span>
+                    <select className="builder-select" value={d.echo} onChange={e => updateDevice(i, 'echo', e.target.value)} style={{ width: 100 }}>
+                      <option value="">Echo...</option>
+                      {boardPins.digitalPins.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
+                    </select>
+                  </>
+                )}
+              </>
+            )}
             {devices.length > 1 && (
               <button className="rule-remove" onClick={() => removeDevice(i)}>✕</button>
             )}
           </div>
         ))}
-        <button className="add-btn" onClick={addDevice}>+ Adicionar dispositivo</button>
+        <button className="add-btn" onClick={addDevice}>+ Adicionar dispositivo/sensor</button>
       </div>
 
       {/* Regras */}
@@ -781,8 +1061,13 @@ function VisualBuilder({ onGenerate }) {
               <option value="!=">!=</option>
               <option value=">">&gt;</option>
               <option value="<">&lt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<=">&lt;=</option>
             </select>
-            <input className="builder-input" placeholder="Valor" value={r.valor}
+            <input
+              className="builder-input"
+              placeholder={sensorByName[r.gatilho]?.sensorTipo === 'generic' ? 'detected/not_detected' : 'Valor numérico'}
+              value={r.valor}
               onChange={e => updateRegra(i, 'valor', e.target.value)} style={{ width: 120 }} />
             <span style={{ color: 'var(--accent-green)', fontWeight: 600, fontSize: 13 }}>→</span>
             <select className="builder-select" value={r.acao} onChange={e => updateRegra(i, 'acao', e.target.value)}>
@@ -798,9 +1083,35 @@ function VisualBuilder({ onGenerate }) {
             {regras.length > 1 && (
               <button className="rule-remove" onClick={() => removeRegra(i)}>✕</button>
             )}
+            <label style={{ color: 'var(--text-secondary)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={!!r.usarElse}
+                onChange={e => updateRegra(i, 'usarElse', e.target.checked)}
+              />
+              Else (senão)
+            </label>
+            {r.usarElse && (
+              <>
+                <span style={{ color: 'var(--accent-red)', fontWeight: 600, fontSize: 13 }}>ELSE</span>
+                <select className="builder-select" value={r.acaoElse} onChange={e => updateRegra(i, 'acaoElse', e.target.value)}>
+                  <option value="">Selecionar dispositivo...</option>
+                  {deviceNames.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select className="builder-select" value={r.estadoElse} onChange={e => updateRegra(i, 'estadoElse', e.target.value)} style={{ width: 80 }}>
+                  <option value="on">ON</option>
+                  <option value="off">OFF</option>
+                </select>
+                <input className="builder-input" placeholder="Wait else (ms)" value={r.waitElse}
+                  onChange={e => updateRegra(i, 'waitElse', e.target.value)} style={{ width: 130 }} />
+              </>
+            )}
           </div>
         ))}
         <button className="add-btn" onClick={addRegra}>+ Adicionar regra</button>
+        <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 10 }}>
+          Dica: sensores analógicos, DHT11 e HC-SR04 usam comparação numérica (ex.: &gt; 30 ou &lt; 20).
+        </div>
       </div>
 
       {/* Gerar */}
@@ -816,9 +1127,11 @@ function VisualBuilder({ onGenerate }) {
 /* ===== App Principal ===== */
 function App() {
   const [modo, setModo] = useState('editor') // 'editor' | 'visual'
+  const [board, setBoard] = useState('uno')
   const [codigo, setCodigo] = useState(EXEMPLOS[0].codigo)
   const [resultado, setResultado] = useState(null)
   const [abaResultado, setAbaResultado] = useState('execucao')
+  const [copiado, setCopiado] = useState(false)
   const [compilando, setCompilando] = useState(false)
   const [erro, setErro] = useState(null)
   const [erroDetalhes, setErroDetalhes] = useState([])
@@ -837,10 +1150,18 @@ function App() {
     setErroDetalhes([])
 
     try {
+      const validacao = validarCodigoPorPlaca(codigo, board)
+      if (!validacao.ok) {
+        setErro(`Erro de validação para ${BOARD_OPTIONS[board].label}.`)
+        setErroDetalhes(validacao.erros)
+        setResultado(null)
+        return
+      }
+
       const res = await compilar(codigo)
       if (res.sucesso) {
         setResultado(res)
-        setAbaResultado('execucao')
+        setAbaResultado('codigo')
         setErroDetalhes([])
       } else {
         setErro(res.erro || 'Erro desconhecido')
@@ -854,7 +1175,7 @@ function App() {
     } finally {
       setCompilando(false)
     }
-  }, [codigo])
+  }, [codigo, board])
 
   useEffect(() => {
     compileActionRef.current = () => {
@@ -897,9 +1218,22 @@ function App() {
   const handleVisualGenerate = (generatedCode) => {
     setCodigo(generatedCode)
     setModo('editor')
+    setAbaResultado('codigo')
     setResultado(null)
     setErro(null)
     setErroDetalhes([])
+  }
+
+  const handleCopiarCodigo = async () => {
+    const texto = resultado?.codigo_c || ''
+    if (!texto) return
+    try {
+      await navigator.clipboard.writeText(texto)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1500)
+    } catch {
+      setCopiado(false)
+    }
   }
 
   return (
@@ -954,6 +1288,10 @@ function App() {
         <>
           {/* Barra de compilação */}
               <div className="compile-bar">
+            <select className="builder-select" value={board} onChange={e => setBoard(e.target.value)}>
+              <option value="uno">Arduino UNO</option>
+              <option value="mega2560">Arduino Mega 2560</option>
+            </select>
             <button
               className={`compile-btn ${compilando ? 'loading' : ''}`}
               onClick={handleCompile}
@@ -1026,22 +1364,34 @@ function App() {
             {/* Painel de Resultado */}
             <div className="result-panel" style={{ flex: `0 0 ${100 - editorWidth}%` }}>
               <div className="result-tabs">
-                <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('codigo')}>
-                  Código C
-                </button>
-                <button className={`result-tab ${abaResultado === 'execucao' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('execucao')}>
-                  Execução
-                </button>
-                <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('tokens')}>
-                  Tokens
-                </button>
-                <button className={`result-tab ${abaResultado === 'ast' ? 'active' : ''}`}
-                  onClick={() => setAbaResultado('ast')}>
-                  AST
-                </button>
+                <div className="result-tabs-left">
+                  <button className={`result-tab ${abaResultado === 'codigo' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('codigo')}>
+                    Código C
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'execucao' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('execucao')}>
+                    Execução
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'tokens' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('tokens')}>
+                    Tokens
+                  </button>
+                  <button className={`result-tab ${abaResultado === 'ast' ? 'active' : ''}`}
+                    onClick={() => setAbaResultado('ast')}>
+                    AST
+                  </button>
+                </div>
+                {abaResultado === 'codigo' && (
+                  <button
+                    className="result-copy-btn"
+                    onClick={handleCopiarCodigo}
+                    title="Copiar código C"
+                    disabled={!resultado?.codigo_c}
+                  >
+                    {copiado ? '✓ Copiado' : '📋 Copiar'}
+                  </button>
+                )}
               </div>
 
               <div className="result-content">

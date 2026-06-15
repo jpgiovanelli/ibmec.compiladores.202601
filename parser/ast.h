@@ -19,6 +19,8 @@ typedef enum {
     NODE_TURN_CMD,          /* Comando turn on/off */
     NODE_WAIT_CMD,          /* Comando wait */
     NODE_IF_STMT,           /* Estrutura if */
+    NODE_FOR_STMT,          /* Estrutura for */
+    NODE_WHILE_STMT,        /* Estrutura while */
     NODE_WHEN_STMT,         /* Estrutura when */
     NODE_BLOCK,             /* Bloco de comandos { } */
     NODE_CONDITION          /* Condição (sensor op valor) */
@@ -53,6 +55,8 @@ typedef struct ASTNode {
     /* Dados específicos do nó */
     char nome[MAX_NAME_LEN];           /* nome do dispositivo/sensor */
     char pino[MAX_NAME_LEN];           /* número ou nome do pino */
+    char pino_secundario[MAX_NAME_LEN];/* pino extra (ex.: echo do HC-SR04) */
+    char sensor_tipo[MAX_NAME_LEN];    /* generic, dht11, hcsr04 */
     OperatorType operador;             /* operador da condição */
     char valor_comparacao[MAX_NAME_LEN]; /* valor comparado */
     DeviceState estado;                /* on ou off */

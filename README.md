@@ -26,6 +26,26 @@ Pipeline: **`.iot` → Tokens (Lexer) → AST (Parser) → Código C/Arduino (Co
 - **Regex**: [`docs/regex.md`](docs/regex.md)
 - **Árvore hierárquica (exemplos)**: [`docs/arvore_hierarquica.md`](docs/arvore_hierarquica.md)
 
+### Sensores suportados (geração C automática)
+- Genérico legado: `sensor nome pin <pino>;`
+- DHT11: `sensor temperatura type dht11 pin 2;` (gera `#include <DHT.h>` e `begin()`)
+- HC-SR04: `sensor distancia type hcsr04 trig 8 echo 9;` (gera leitura por `pulseIn`, sem biblioteca externa)
+- Sintaxe PT-BR equivalente também suportada:
+  - `sensor temperatura tipo dht11 pino 2;`
+  - `sensor distancia tipo hcsr04 gatilho 8 eco 9;`
+
+### Condicionais com `else`
+- Inglês: `if/when ... { ... } else { ... }`
+- PT-BR: `se/quando ... { ... } senao { ... }`
+
+### Laços (`for` e `while`)
+- Inglês:
+  - `for i = 0; i < 10; i = i + 1 { ... }`
+  - `while i < 10 { ... }`
+- PT-BR:
+  - `para i = 0; i < 10; i = i + 1 { ... }`
+  - `enquanto i < 10 { ... }`
+
 ### Código-fonte (por fase do compilador)
 - **Lexer**: [`lexer/`](lexer/)
 - **Parser + AST**: [`parser/`](parser/)

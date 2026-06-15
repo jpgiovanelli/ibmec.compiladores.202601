@@ -80,6 +80,9 @@ static TokenType verificar_palavra_reservada(const char *palavra) {
     if (strcmp(palavra, "off") == 0)           return TOKEN_OFF;
     if (strcmp(palavra, "wait") == 0)          return TOKEN_WAIT;
     if (strcmp(palavra, "if") == 0)            return TOKEN_IF;
+    if (strcmp(palavra, "for") == 0)           return TOKEN_FOR;
+    if (strcmp(palavra, "while") == 0)         return TOKEN_WHILE;
+    if (strcmp(palavra, "else") == 0)          return TOKEN_ELSE;
     if (strcmp(palavra, "when") == 0)          return TOKEN_WHEN;
     if (strcmp(palavra, "detected") == 0)      return TOKEN_DETECTED;
     if (strcmp(palavra, "not_detected") == 0)  return TOKEN_NOT_DETECTED;
@@ -90,6 +93,9 @@ static TokenType verificar_palavra_reservada(const char *palavra) {
     if (strcmp(palavra, "desligar") == 0)      return TOKEN_DESLIGAR;
     if (strcmp(palavra, "esperar") == 0)       return TOKEN_WAIT;
     if (strcmp(palavra, "se") == 0)            return TOKEN_IF;
+    if (strcmp(palavra, "para") == 0)          return TOKEN_FOR;
+    if (strcmp(palavra, "enquanto") == 0)      return TOKEN_WHILE;
+    if (strcmp(palavra, "senao") == 0)         return TOKEN_ELSE;
     if (strcmp(palavra, "quando") == 0)        return TOKEN_WHEN;
     if (strcmp(palavra, "detectado") == 0)     return TOKEN_DETECTED;
     if (strcmp(palavra, "nao_detectado") == 0) return TOKEN_NOT_DETECTED;
@@ -326,6 +332,9 @@ const char* token_tipo_nome(TokenType tipo) {
         case TOKEN_OFF:             return "KEYWORD_OFF";
         case TOKEN_WAIT:            return "KEYWORD_WAIT";
         case TOKEN_IF:              return "KEYWORD_IF";
+        case TOKEN_FOR:             return "KEYWORD_FOR";
+        case TOKEN_WHILE:           return "KEYWORD_WHILE";
+        case TOKEN_ELSE:            return "KEYWORD_ELSE";
         case TOKEN_WHEN:            return "KEYWORD_WHEN";
         case TOKEN_DETECTED:        return "KEYWORD_DETECTED";
         case TOKEN_NOT_DETECTED:    return "KEYWORD_NOT_DETECTED";
