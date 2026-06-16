@@ -10,6 +10,10 @@
 Projeto de compiladores: linguagem **HomeScript** para automação residencial.
 Pipeline: **`.iot` → Tokens (Lexer) → AST (Parser) → Código C/Arduino (CodeGen)**.
 
+**Links**
+- Documentação: https://www.overleaf.com/read/czsxgkvhzcmf#355f1e
+- Vídeo: https://drive.google.com/file/d/141SZCPJO9-JFBybCya4G7Ga6OIb_sZDr/view?usp=sharing
+
 ### Começar rápido
 - **Exemplos `.iot`**: [`exemplos/`](exemplos/)
   - [`exemplos/teste.iot`](exemplos/teste.iot)
